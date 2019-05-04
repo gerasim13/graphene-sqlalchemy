@@ -1,96 +1,28 @@
-from collections import OrderedDict
-
-import sqlalchemy
-from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.inspection import inspect as sqlalchemyinspect
+import graphene
 from sqlalchemy.orm.exc import NoResultFound
 
-from graphene import Field  # , annotate, ResolveInfo
-from graphene.relay import Connection, Node
-from graphene.types.objecttype import ObjectType, ObjectTypeOptions
-from graphene.types.utils import yank_fields_from_attrs
-
-from .converter import (convert_sqlalchemy_column,
-                        convert_sqlalchemy_composite,
-                        convert_sqlalchemy_hybrid_method,
-                        convert_sqlalchemy_relationship)
+from .converter import (convert_model_to_attributes, get_attributes_fields,
+                        FieldType)
 from .fields import default_connection_field_factory
-from .registry import Registry, get_global_registry
-from .utils import get_query, is_mapped_class, is_mapped_instance
+from .registry import get_global_registry, Registry
+from .utils import is_mapped_class, is_mapped_instance, get_query
 
 
-def construct_fields(model, registry, only_fields, exclude_fields, connection_field_factory):
-    inspected_model = sqlalchemyinspect(model)
-
-    fields = OrderedDict()
-
-    for name, column in inspected_model.columns.items():
-        is_not_in_only = only_fields and name not in only_fields
-        # is_already_created = name in options.fields
-        is_excluded = name in exclude_fields  # or is_already_created
-        if is_not_in_only or is_excluded:
-            # We skip this field if we specify only_fields and is not
-            # in there. Or when we exclude this field in exclude_fields
-            continue
-        converted_column = convert_sqlalchemy_column(column, registry)
-        fields[name] = converted_column
-
-    for name, composite in inspected_model.composites.items():
-        is_not_in_only = only_fields and name not in only_fields
-        # is_already_created = name in options.fields
-        is_excluded = name in exclude_fields  # or is_already_created
-        if is_not_in_only or is_excluded:
-            # We skip this field if we specify only_fields and is not
-            # in there. Or when we exclude this field in exclude_fields
-            continue
-        converted_composite = convert_sqlalchemy_composite(composite, registry)
-        fields[name] = converted_composite
-
-    for hybrid_item in inspected_model.all_orm_descriptors:
-
-        if type(hybrid_item) == hybrid_property:
-            name = hybrid_item.__name__
-
-            is_not_in_only = only_fields and name not in only_fields
-            # is_already_created = name in options.fields
-            is_excluded = name in exclude_fields  # or is_already_created
-
-            if is_not_in_only or is_excluded:
-                # We skip this field if we specify only_fields and is not
-                # in there. Or when we exclude this field in exclude_fields
-                continue
-
-            converted_hybrid_property = convert_sqlalchemy_hybrid_method(hybrid_item)
-            fields[name] = converted_hybrid_property
-
-    # Get all the columns for the relationships on the model
-    for relationship in inspected_model.relationships:
-        is_not_in_only = only_fields and relationship.key not in only_fields
-        # is_already_created = relationship.key in options.fields
-        is_excluded = relationship.key in exclude_fields  # or is_already_created
-        if is_not_in_only or is_excluded:
-            # We skip this field if we specify only_fields and is not
-            # in there. Or when we exclude this field in exclude_fields
-            continue
-        converted_relationship = convert_sqlalchemy_relationship(relationship, registry, connection_field_factory)
-        name = relationship.key
-        fields[name] = converted_relationship
-
-    return fields
+class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
+    model = None
+    registry = None
+    connection = None
+    connection_field_factory = None
+    attributes = None
+    id = None
 
 
-class SQLAlchemyObjectTypeOptions(ObjectTypeOptions):
-    model = None  # type: sqlalchemy.Model
-    registry = None  # type: sqlalchemy.Registry
-    connection = None  # type: sqlalchemy.Type[sqlalchemy.Connection]
-    id = None  # type: str
-
-
-class SQLAlchemyObjectType(ObjectType):
+class ObjectType(graphene.ObjectType):
     @classmethod
     def __init_subclass_with_meta__(
         cls,
         model=None,
+        attributes=None,
         registry=None,
         skip_registry=False,
         only_fields=(),
@@ -104,63 +36,67 @@ class SQLAlchemyObjectType(ObjectType):
         _meta=None,
         **options
     ):
-        assert is_mapped_class(model), (
-            "You need to pass a valid SQLAlchemy Model in " '{}.Meta, received "{}".'
-        ).format(cls.__name__, model)
+        assert is_mapped_class(model),\
+            f'You need to pass a valid SQLAlchemy ' \
+            f'Model in {cls.__name__}.Meta, received "{model}".'
 
         if not registry:
             registry = get_global_registry()
+        assert isinstance(registry, Registry),\
+            f'The attribute registry in {cls.__name__} needs to be an ' \
+            f'instance of Registry, received "{registry}".'
 
-        assert isinstance(registry, Registry), (
-            "The attribute registry in {} needs to be an instance of "
-            'Registry, received "{}".'
-        ).format(cls.__name__, registry)
-
-        sqla_fields = yank_fields_from_attrs(
-            construct_fields(
-                model=model,
-                registry=registry,
-                only_fields=only_fields,
-                exclude_fields=exclude_fields,
-                connection_field_factory=connection_field_factory
-            ),
-            _as=Field
-        )
+        if not attributes:
+            attributes = convert_model_to_attributes(
+                model, connection_field_factory=connection_field_factory)
 
         if use_connection is None and interfaces:
             use_connection = any(
-                (issubclass(interface, Node) for interface in interfaces)
+                (issubclass(interface, graphene.relay.Node) for interface in interfaces)
             )
 
         if use_connection and not connection:
             # We create the connection automatically
             if not connection_class:
-                connection_class = Connection
-
+                connection_class = graphene.relay.Connection
             connection = connection_class.create_type(
-                "{}Connection".format(cls.__name__), node=cls
+                f'{cls.__name__}Connection', node=cls
             )
 
         if connection is not None:
-            assert issubclass(connection, Connection), (
-                "The connection must be a Connection. Received {}"
-            ).format(connection.__name__)
+            assert issubclass(connection, graphene.relay.Connection),\
+                f'The connection must be a Connection.' \
+                f'Received {connection.__name__}'
 
         if not _meta:
-            _meta = SQLAlchemyObjectTypeOptions(cls)
+            _meta = ObjectTypeOptions(cls)
 
-        _meta.model = model
+        _meta.id = id or "id"
+        _meta.attributes = attributes
+        _meta.connection = connection
+        _meta.connection_field_factory = connection_field_factory
         _meta.registry = registry
+        _meta.model = model
+
+        _fields = {
+            n: getattr(attributes, n) for n in dir(attributes)
+            if (not callable(getattr(attributes, n)) and
+                not n.startswith('__'))
+        }
+        _fields.update(get_attributes_fields(
+            model,
+            registry,
+            field_types=(
+                FieldType.composite, FieldType.hybrid, FieldType.relationship
+            )
+        ))
 
         if _meta.fields:
-            _meta.fields.update(sqla_fields)
+            _meta.fields.update(_fields)
         else:
-            _meta.fields = sqla_fields
+            _meta.fields = _fields
 
-        _meta.connection = connection
-        _meta.id = id or "id"
-
-        super(SQLAlchemyObjectType, cls).__init_subclass_with_meta__(
+        super().__init_subclass_with_meta__(
             _meta=_meta, interfaces=interfaces, **options
         )
 
@@ -172,7 +108,7 @@ class SQLAlchemyObjectType(ObjectType):
         if isinstance(root, cls):
             return True
         if not is_mapped_instance(root):
-            raise Exception(('Received incompatible instance "{}".').format(root))
+            raise Exception(f'Received incompatible instance "{root}".')
         return isinstance(root, cls._meta.model)
 
     @classmethod
@@ -188,6 +124,30 @@ class SQLAlchemyObjectType(ObjectType):
             return None
 
     def resolve_id(self, info):
-        # graphene_type = info.parent_type.graphene_type
         keys = self.__mapper__.primary_key_from_instance(self)
         return tuple(keys) if len(keys) > 1 else keys[0]
+
+
+class InputObjectType(graphene.InputObjectType):
+    @classmethod
+    def __init_subclass_with_meta__(cls, container=None, _meta=None, **options):
+        def _iter_fields(attributes):
+            for i in vars(attributes):
+                f = getattr(attributes, i)
+                if not isinstance(f, graphene.Field):
+                    continue
+                yield i, f
+
+        schema = options.pop('schema', None)
+        if schema:
+            attributes = convert_model_to_attributes(
+                schema._meta.model,
+                connection_field_factory=schema._meta.connection_field_factory,
+                input_attributes=True)
+            for name, field in _iter_fields(attributes):
+                setattr(cls, name, field)
+
+        super().__init_subclass_with_meta__(
+            container=container,
+            _meta=_meta,
+            **options)

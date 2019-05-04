@@ -1,25 +1,31 @@
 class Registry(object):
     def __init__(self):
-        self._registry = {}
         self._registry_models = {}
         self._registry_composites = {}
+        self._registry_attributes = {}
+
+    def __contains__(self, item):
+        return item in self._registry_models or \
+               item in self._registry_composites or \
+               item in self._registry_attributes
 
     def register(self, cls):
-        from .types import SQLAlchemyObjectType
-
-        assert issubclass(cls, SQLAlchemyObjectType), (
-            "Only classes of type SQLAlchemyObjectType can be registered, "
-            'received "{}"'
-        ).format(cls.__name__)
-        assert cls._meta.registry == self, "Registry for a Model have to match."
-        # assert self.get_type_for_model(cls._meta.model) in [None, cls], (
-        #     'SQLAlchemy model "{}" already associated with '
-        #     'another type "{}".'
-        # ).format(cls._meta.model, self._registry[cls._meta.model])
-        self._registry[cls._meta.model] = cls
+        from .types import ObjectType
+        assert issubclass(cls, ObjectType),\
+            f'Only classes of type {ObjectType} can be registered, ' \
+            f'received "{cls.__name__}"'
+        assert cls._meta.registry == self,\
+            'Registry for a Model have to match.'
+        self._registry_models[cls._meta.model] = cls
 
     def get_type_for_model(self, model):
-        return self._registry.get(model)
+        return self._registry_models.get(model)
+
+    def register_attributes(self, attributes_cls):
+        self._registry_attributes[attributes_cls.__name__] = attributes_cls
+
+    def get_attributes_for_model(self, attributes):
+        return self._registry_attributes.get(attributes)
 
     def register_composite_converter(self, composite, converter):
         self._registry_composites[composite] = converter
