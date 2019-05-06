@@ -12,7 +12,7 @@ from sqlalchemy.orm import interfaces
 
 from .fields import default_connection_field_factory
 from .registry import Registry, get_global_registry
-from .utils import get_column_doc, is_column_nullable, is_column_has_default
+from .utils import get_column_doc, is_column_required
 
 
 class FieldType(enum.Enum):
@@ -181,12 +181,8 @@ def convert_sqlalchemy_hybrid_method(f, **kwargs):
 def convert_id_field(t, f, registry=None,
                      connection_field_factory=None,
                      input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.ID(description=get_column_doc(f),
-                       required=required)
+                       required=is_column_required(f, input_attributes))
 
 
 @functools.singledispatch
@@ -205,13 +201,8 @@ def convert_uuid_field(t, f, registry=None,
         return convert_id_field(t, f, registry,
                                 connection_field_factory,
                                 input_attributes)
-
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.UUID(description=get_column_doc(f),
-                         required=required)
+                         required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.String)
@@ -228,13 +219,8 @@ def convert_str_field(t, f, registry=None,
         return convert_id_field(t, f, registry,
                                 connection_field_factory,
                                 input_attributes)
-
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.String(description=get_column_doc(f),
-                           required=required)
+                           required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.SmallInteger)
@@ -247,13 +233,8 @@ def convert_int_field(t, f, registry=None,
         return convert_id_field(t, f, registry,
                                 connection_field_factory,
                                 input_attributes)
-
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Int(description=get_column_doc(f),
-                        required=required)
+                        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Float)
@@ -262,12 +243,8 @@ def convert_int_field(t, f, registry=None,
 def convert_float_field(t, f, registry=None,
                         connection_field_factory=None,
                         input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Float(description=get_column_doc(f),
-                          required=required)
+                          required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Boolean)
@@ -275,12 +252,8 @@ def convert_float_field(t, f, registry=None,
 def convert_bool_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Boolean(description=get_column_doc(f),
-                            required=required)
+                            required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.DateTime)
@@ -288,12 +261,8 @@ def convert_bool_field(t, f, registry=None,
 def convert_datetime_field(t, f, registry=None,
                            connection_field_factory=None,
                            input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.DateTime(description=get_column_doc(f),
-                             required=required)
+                             required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Date)
@@ -301,12 +270,8 @@ def convert_datetime_field(t, f, registry=None,
 def convert_date_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Date(description=get_column_doc(f),
-                         required=required)
+                         required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Time)
@@ -315,12 +280,8 @@ def convert_date_field(t, f, registry=None,
 def convert_datetime_field(t, f, registry=None,
                            connection_field_factory=None,
                            input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Time(description=get_column_doc(f),
-                         required=required)
+                         required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.JSON)
@@ -329,12 +290,8 @@ def convert_datetime_field(t, f, registry=None,
 def convert_json_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.JSONString(description=get_column_doc(f),
-                               required=required)
+                               required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Enum)
@@ -348,14 +305,10 @@ def convert_enum_to_enum(t, f, registry=None,
         items = zip(t.enums, t.enums)
         graphene_type = graphene.Enum(t.name, items)
 
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Field(
         graphene_type,
         description=get_column_doc(f),
-        required=required,
+        required=is_column_required(f, input_attributes),
     )
 
 
@@ -363,25 +316,17 @@ def convert_enum_to_enum(t, f, registry=None,
 def conver_array_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     field = convert_sqlalchemy_type(t.item_type, f, registry,
                                     connection_field_factory,
                                     input_attributes)
     return graphene.List(type(field),
                          description=get_column_doc(f),
-                         required=required)
+                         required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Table)
 def conver_table(t, f, registry=None,
                  connection_field_factory=None,
                  input_attributes=False):
-    if input_attributes:
-        required = not (is_column_has_default(f) or is_column_nullable(f))
-    else:
-        required = not is_column_nullable(f)
     return graphene.Dynamic(description=get_column_doc(f),
-                            required=required)
+                            required=is_column_required(f, input_attributes))

@@ -96,6 +96,13 @@ def is_column_has_default(column):
     return bool(getattr(column, "default", None) is not None)
 
 
+def is_column_required(column, for_input=False):
+    if for_input:
+        return not (is_column_has_default(column)
+                    or is_column_nullable(column))
+    return not is_column_nullable(column)
+
+
 def is_mapped_class(cls):
     try:
         class_mapper(cls)
