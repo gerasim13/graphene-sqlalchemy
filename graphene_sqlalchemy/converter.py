@@ -299,11 +299,18 @@ def convert_enum_to_enum(t, f, registry=None,
                          connection_field_factory=None,
                          input_attributes=False):
     enum_class = getattr(t, 'enum_class', None)
-    if enum_class:  # Check if an enum.Enum type is used
-        graphene_type = graphene.Enum.from_enum(enum_class)
-    else:  # Nope, just a list of string options
-        items = zip(t.enums, t.enums)
-        graphene_type = graphene.Enum(t.name, items)
+    cls_name = enum_class.__name__ if enum_class else t.name
+    graphene_type = registry.get_enum(cls_name)
+
+    if not graphene_type:
+        if enum_class:
+            # Check if an enum.Enum type is used
+            graphene_type = graphene.Enum.from_enum(enum_class)
+        else:
+            # Nope, just a list of string options
+            items = zip(t.enums, t.enums)
+            graphene_type = graphene.Enum(t.name, items)
+        registry.register_enum(graphene_type)
 
     return graphene.Field(
         graphene_type,
@@ -319,7 +326,7 @@ def conver_array_field(t, f, registry=None,
     field = convert_sqlalchemy_type(t.item_type, f, registry,
                                     connection_field_factory,
                                     input_attributes)
-    return graphene.List(type(field),
+    return graphene.List(field.type if hasattr(field, 'type') else type(field),
                          description=get_column_doc(f),
                          required=is_column_required(f, input_attributes))
 

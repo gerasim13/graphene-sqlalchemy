@@ -3,6 +3,7 @@ class Registry(object):
         self._registry_models = {}
         self._registry_composites = {}
         self._registry_attributes = {}
+        self._registry_enums = {}
 
     def __contains__(self, item):
         return item in self._registry_models or \
@@ -32,6 +33,12 @@ class Registry(object):
 
     def get_converter_for_composite(self, composite):
         return self._registry_composites.get(composite)
+
+    def register_enum(self, enum):
+        self._registry_enums[enum.__name__] = enum
+
+    def get_enum(self, enum):
+        return self._registry_enums.get(enum)
 
 
 registry = None
