@@ -1,5 +1,8 @@
 import enum
-
+import graphene
+from graphene.relay import Node
+from graphene.types.datetime import DateTime
+from graphene.types.json import JSONString
 from py.test import raises
 from sqlalchemy import Column, Table, case, func, select, types
 from sqlalchemy.dialects import postgresql
@@ -8,11 +11,7 @@ from sqlalchemy.orm import column_property, composite
 from sqlalchemy.sql.elements import Label
 from sqlalchemy_utils import ChoiceType, JSONType, ScalarListType
 
-import graphene
-from graphene.relay import Node
-from graphene.types.datetime import DateTime
-from graphene.types.json import JSONString
-
+from .models import Article, Pet, Reporter
 from ..converter import (convert_sqlalchemy_column,
                          convert_sqlalchemy_composite,
                          convert_sqlalchemy_relationship)
@@ -20,7 +19,6 @@ from ..fields import (UnsortedSQLAlchemyConnectionField,
                       default_connection_field_factory)
 from ..registry import Registry
 from ..types import SQLAlchemyObjectType
-from .models import Article, Pet, Reporter
 
 
 def assert_column_conversion(sqlalchemy_type, graphene_field, **kwargs):

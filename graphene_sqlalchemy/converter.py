@@ -1,9 +1,9 @@
 import enum
 import functools
-from collections import OrderedDict
-
 import graphene
 import sqlalchemy
+import sqlalchemy_utils
+from collections import OrderedDict
 from graphene.types.utils import yank_fields_from_attrs
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
@@ -22,8 +22,8 @@ class FieldType(enum.Enum):
     relationship = enum.auto()
 
 
-def iter_fields(model, only_fields, exclude_fields):
-    mapper = inspect(model)
+def iter_fields(model, only_fields=None, exclude_fields=None):
+    mapper = inspect(model, raiseerr=False) or model
 
     def _skip_field_with_name(name):
         is_not_in_only = only_fields and name not in only_fields
@@ -32,22 +32,22 @@ def iter_fields(model, only_fields, exclude_fields):
         # in there. Or when we exclude this field in exclude_fields\
         return is_not_in_only or is_excluded
 
-    for f in mapper.columns:
+    for f in getattr(mapper, 'columns', []):
         if _skip_field_with_name(f.name):
             continue
         yield f.name, f, FieldType.scalar
 
-    for name, f in mapper.composites:
+    for name, f in getattr(mapper, 'composites', []):
         if _skip_field_with_name(f.name):
             continue
         yield f.name, f, FieldType.composite
 
-    for f in mapper.all_orm_descriptors:
+    for f in getattr(mapper, 'all_orm_descriptors', []):
         if type(f) != hybrid_property or _skip_field_with_name(f.__name__):
             continue
         yield f.__name__, f, FieldType.hybrid
 
-    for f in mapper.relationships:
+    for f in getattr(mapper, 'relationships', []):
         if _skip_field_with_name(f.key):
             continue
         yield f.key, f, FieldType.relationship
@@ -135,21 +135,24 @@ def convert_model_to_attributes(m, f=None, registry=None,
 def convert_sqlalchemy_composite(composite, registry,
                                  connection_field_factory=None,
                                  input_attributes=False):
-    converter = registry.get_converter_for_composite(composite.composite_class)
-    if not converter:
-        try:
-            raise Exception(
-                "Don't know how to convert the composite field %s (%s)"
-                % (composite, composite.composite_class)
-            )
-        # handle fields that are not attached to a class yet
-        # (don't have a parent)
-        except AttributeError:
-            raise Exception(
-                "Don't know how to convert the composite field %r (%s)"
-                % (composite, composite.composite_class)
-            )
-    return converter(composite, registry)
+    if input_attributes:
+        _classname = f'{composite.name}Input'
+        _baseclass = graphene.InputObjectType
+    else:
+        _classname = composite.name
+        _baseclass = graphene.ObjectType
+
+    graphene_type = registry.get_converter_for_composite(_classname)
+    if not graphene_type:
+        _fields = get_attributes_fields(
+            composite, registry,
+            field_types=(FieldType.scalar,),
+            connection_field_factory=connection_field_factory,
+            input_attributes=input_attributes)
+        graphene_type = type(_classname, (_baseclass,), _fields)
+        registry.register_composite_converter(_classname, graphene_type)
+
+    return graphene_type
 
 
 def convert_sqlalchemy_relationship(relationship, registry,
@@ -212,6 +215,9 @@ def convert_uuid_field(t, f, registry=None,
 @convert_sqlalchemy_type.register(sqlalchemy.VARCHAR)
 @convert_sqlalchemy_type.register(sqlalchemy.NVARCHAR)
 @convert_sqlalchemy_type.register(sqlalchemy.TEXT)
+@convert_sqlalchemy_type.register(sqlalchemy.ForeignKey)
+@convert_sqlalchemy_type.register(sqlalchemy_utils.ColorType)
+@convert_sqlalchemy_type.register(sqlalchemy_utils.CountryType)
 def convert_str_field(t, f, registry=None,
                       connection_field_factory=None,
                       input_attributes=False):
@@ -295,12 +301,11 @@ def convert_json_field(t, f, registry=None,
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Enum)
-def convert_enum_to_enum(t, f, registry=None,
-                         connection_field_factory=None,
-                         input_attributes=False):
+def convert_enum_field(t, f, registry=None,
+                       connection_field_factory=None,
+                       input_attributes=False):
     enum_class = getattr(t, 'enum_class', None)
-    cls_name = enum_class.__name__ if enum_class else t.name
-    graphene_type = registry.get_enum(cls_name)
+    graphene_type = registry.get_enum(enum_class.__name__)
 
     if not graphene_type:
         if enum_class:
@@ -319,10 +324,33 @@ def convert_enum_to_enum(t, f, registry=None,
     )
 
 
+@convert_sqlalchemy_type.register(sqlalchemy_utils.ChoiceType)
+def convert_choice_type_field(t, f, registry=None,
+                              connection_field_factory=None,
+                              input_attributes=False):
+    choices = t.choices
+    graphene_type = registry.get_enum(choices.__name__)
+
+    if not graphene_type:
+        if isinstance(choices, enum.EnumMeta):
+            # Check if an enum.Enum type is used
+            graphene_type = graphene.Enum.from_enum(choices)
+        else:
+            # Nope, just a list of string options
+            graphene_type = graphene.Enum(choices.__name__, choices)
+        registry.register_enum(graphene_type)
+
+    return graphene.Field(
+        graphene_type,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes),
+    )
+
+
 @convert_sqlalchemy_type.register(sqlalchemy.ARRAY)
-def conver_array_field(t, f, registry=None,
-                       connection_field_factory=None,
-                       input_attributes=False):
+def convert_array_field(t, f, registry=None,
+                        connection_field_factory=None,
+                        input_attributes=False):
     field = convert_sqlalchemy_type(t.item_type, f, registry,
                                     connection_field_factory,
                                     input_attributes)
@@ -332,8 +360,20 @@ def conver_array_field(t, f, registry=None,
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Table)
-def conver_table(t, f, registry=None,
-                 connection_field_factory=None,
-                 input_attributes=False):
+def convert_table(t, f, registry=None,
+                  connection_field_factory=None,
+                  input_attributes=False):
     return graphene.Dynamic(description=get_column_doc(f),
                             required=is_column_required(f, input_attributes))
+
+
+@convert_sqlalchemy_type.register(sqlalchemy_utils.CompositeType)
+def convert_compositeType_field(t, f, registry=None,
+                                connection_field_factory=None,
+                                input_attributes=False):
+    graphene_type = convert_sqlalchemy_composite(t, registry,
+                                                 connection_field_factory,
+                                                 input_attributes)
+    return graphene.Field(graphene_type,
+                          description=get_column_doc(f),
+                          required=is_column_required(f, input_attributes))

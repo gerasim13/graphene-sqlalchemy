@@ -79,7 +79,10 @@ def input_to_dictionary(input):
     for key in input:
         # Convert GraphQL global id to database id
         if key[-2:] == 'id':
-            input[key] = from_global_id(input[key])[1]
+            try:
+                input[key] = from_global_id(input[key])[1]
+            except Exception as e:
+                pass
         dictionary[key] = input[key]
     return dictionary
 

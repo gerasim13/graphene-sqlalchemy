@@ -5,7 +5,8 @@ from .converter import (convert_model_to_attributes, get_attributes_fields,
                         FieldType)
 from .fields import default_connection_field_factory
 from .registry import get_global_registry, Registry
-from .utils import is_mapped_class, is_mapped_instance, get_query
+from .utils import (is_mapped_class, is_mapped_instance, get_query,
+                    input_to_dictionary)
 
 
 class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
@@ -124,8 +125,10 @@ class ObjectType(graphene.ObjectType):
             return None
 
     def resolve_id(self, info):
-        keys = self.__mapper__.primary_key_from_instance(self)
-        return tuple(keys) if len(keys) > 1 else keys[0]
+        if hasattr(self, '__mapper__'):
+            keys = self.__mapper__.primary_key_from_instance(self)
+            return tuple(keys) if len(keys) > 1 else keys[0]
+        return self.id.id
 
 
 class InputObjectType(graphene.InputObjectType):
@@ -151,3 +154,45 @@ class InputObjectType(graphene.InputObjectType):
             container=container,
             _meta=_meta,
             **options)
+
+
+class MutationOptions(graphene.types.mutation.MutationOptions):
+    session_getter = None
+
+
+class Mutation(graphene.Mutation):
+
+    @classmethod
+    def __init_subclass_with_meta__(cls,
+                                    resolver=None,
+                                    output=None,
+                                    session_getter=None,
+                                    arguments=None,
+                                    _meta=None,
+                                    **options):
+        if not _meta:
+            _meta = MutationOptions(cls)
+        _meta.session_getter = session_getter or cls.get_session
+        super().__init_subclass_with_meta__(
+            resolver, output, arguments, _meta, **options)
+
+    @classmethod
+    def get_session(cls, info):
+        return None
+
+    @classmethod
+    def mutate(cls, root, info, input=None):
+        data = input_to_dictionary(input)
+        output = cls._meta.output
+        assert output, f'no output for {cls}'
+
+        try:
+            db_session = cls._meta.session_getter(info)
+            if db_session:
+                new_record = output._meta.model(**data)
+                db_session.add(new_record)
+                db_session.commit()
+        except Exception as e:
+            db_session.rollback()
+            raise e
+        return output(new_record)
