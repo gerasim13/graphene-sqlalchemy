@@ -127,7 +127,7 @@ class ObjectType(graphene.ObjectType):
     @classmethod
     def resolve_id(cls, root, info, **args):
         if hasattr(root, '__mapper__'):
-            keys = root.__mapper__.primary_key_from_instance(self)
+            keys = root.__mapper__.primary_key_from_instance(root)
             return tuple(keys) if len(keys) > 1 else keys[0]
         return root.id
 
