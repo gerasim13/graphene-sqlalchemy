@@ -175,7 +175,9 @@ def convert_sqlalchemy_relationship(relationship, registry,
     return graphene.Dynamic(dynamic_type)
 
 
-def convert_sqlalchemy_hybrid_method(f, **kwargs):
+def convert_sqlalchemy_hybrid_method(t, f, registry=None,
+                                     connection_field_factory=None,
+                                     input_attributes=False):
     return graphene.String(
         description=getattr(f, "__doc__", None),
         required=False)
