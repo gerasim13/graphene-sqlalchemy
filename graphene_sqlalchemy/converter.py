@@ -124,7 +124,7 @@ def convert_model_to_attributes(m, f=None, registry=None,
     if not attributes:
         _fields = get_attributes_fields(
             m, registry,
-            field_types=(FieldType.scalar,),
+            field_types=(FieldType.scalar, FieldType.relationship),
             connection_field_factory=connection_field_factory,
             input_attributes=input_attributes)
         attributes = type(_cls_name, (object,), _fields)

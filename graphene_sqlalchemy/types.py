@@ -1,12 +1,12 @@
 import graphene
+from graphql_relay.node.node import from_global_id
 from sqlalchemy.orm.exc import NoResultFound
-
+from sqlalchemy.inspection import inspect
 from .converter import (convert_model_to_attributes, get_attributes_fields,
                         FieldType)
 from .fields import default_connection_field_factory
 from .registry import get_global_registry, Registry
-from .utils import (is_mapped_class, is_mapped_instance, get_query,
-                    input_to_dictionary)
+from .utils import is_mapped_class, is_mapped_instance, get_query
 
 
 class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
@@ -156,13 +156,29 @@ class InputObjectType(graphene.InputObjectType):
             _meta=_meta,
             **options)
 
+    def from_global_id(self, global_id):
+        try:
+            return from_global_id(global_id)[1]
+        except Exception as _:
+            pass
+        return global_id
+
+    def to_dictionary(self, session):
+        """Method to convert Graphene inputs into dictionary"""
+        dictionary = dict(self)
+        for key, value in dictionary.items():
+            # Convert GraphQL global id to database id
+            if not key[-2:] == 'id':
+                continue
+            return self.from_global_id(value)
+        return dictionary
+
 
 class MutationOptions(graphene.types.mutation.MutationOptions):
     session_getter = None
 
 
 class Mutation(graphene.Mutation):
-
     @classmethod
     def __init_subclass_with_meta__(cls,
                                     resolver=None,
@@ -183,17 +199,31 @@ class Mutation(graphene.Mutation):
 
     @classmethod
     def mutate(cls, root, info, input=None):
-        data = input_to_dictionary(input)
+        db_session = cls._meta.session_getter(info)
+        data = input.to_dictionary(db_session)
         output = cls._meta.output
         assert output, f'no output for {cls}'
+        new_record = cls.upsert(output._meta.model, db_session, **data)
+        return output(**new_record.as_dict())
+
+    @classmethod
+    def upsert(cls, model_cls, session, **data):
+        model_pk = data.get(inspect(model_cls).primary_key[0].name)
+        model = session.query(model_cls).get(model_pk) if model_pk else None
 
         try:
-            db_session = cls._meta.session_getter(info)
-            if db_session:
-                new_record = output._meta.model(**data)
-                db_session.add(new_record)
-                db_session.commit()
+            if not model:
+                model = model_cls(**data)
+                session.add(model)
+            else:
+                for field, value in data.items():
+                    if getattr(model, field) == value:
+                        continue
+                    setattr(model, field, value)
         except Exception as e:
-            db_session.rollback()
+            session.rollback()
             raise e
-        return output(**new_record.as_dict())
+        else:
+            session.commit()
+
+        return model

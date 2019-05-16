@@ -1,5 +1,4 @@
 import graphene
-from graphql_relay.node.node import from_global_id
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import class_mapper, object_mapper
@@ -73,20 +72,6 @@ def sort_argument_for_model(cls, has_default=True):
     return graphene.Argument(graphene.List(enum), default_value=default)
 
 
-def input_to_dictionary(input):
-    """Method to convert Graphene inputs into dictionary"""
-    dictionary = {}
-    for key in input:
-        # Convert GraphQL global id to database id
-        if key[-2:] == 'id':
-            try:
-                input[key] = from_global_id(input[key])[1]
-            except Exception as e:
-                pass
-        dictionary[key] = input[key]
-    return dictionary
-
-
 def get_column_doc(column):
     return getattr(column, "doc", None)
 
@@ -109,7 +94,8 @@ def is_column_required(column, for_input=False):
 def is_mapped_class(cls):
     try:
         class_mapper(cls)
-    except (ArgumentError, UnmappedClassError):
+    except (ArgumentError, UnmappedClassError) as _:
+        print(_)
         return False
     else:
         return True
@@ -118,7 +104,8 @@ def is_mapped_class(cls):
 def is_mapped_instance(cls):
     try:
         object_mapper(cls)
-    except (ArgumentError, UnmappedInstanceError):
+    except (ArgumentError, UnmappedInstanceError) as _:
+        print(_)
         return False
     else:
         return True
