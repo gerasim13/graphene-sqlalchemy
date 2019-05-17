@@ -22,7 +22,7 @@ class FieldType(enum.Enum):
     relationship = enum.auto()
 
 
-def iter_fields(model, only_fields=None, exclude_fields=None):
+def iter_fields(model, only_fields=(), exclude_fields=()):
     mapper = inspect(model, raiseerr=False) or model
 
     def _skip_field_with_name(name):
@@ -67,6 +67,7 @@ def construct_fields(
         FieldType.hybrid: convert_sqlalchemy_hybrid_method,
         FieldType.relationship: convert_sqlalchemy_relationship,
     }
+
     for name, field, type in iter_fields(model, only_fields, exclude_fields):
         if type not in field_types:
             continue
@@ -135,18 +136,19 @@ def convert_model_to_attributes(m, f=None, registry=None,
 def convert_sqlalchemy_composite(composite, registry,
                                  connection_field_factory=None,
                                  input_attributes=False):
+    from .types import InputObjectType, ObjectType
     if input_attributes:
         _classname = f'{composite.name}Input'
-        _baseclass = graphene.InputObjectType
+        _baseclass = InputObjectType
     else:
         _classname = composite.name
-        _baseclass = graphene.ObjectType
+        _baseclass = ObjectType
 
     graphene_type = registry.get_converter_for_composite(_classname)
     if not graphene_type:
         _fields = get_attributes_fields(
             composite, registry,
-            field_types=(FieldType.scalar,),
+            field_types=(FieldType.scalar, FieldType.relationship),
             connection_field_factory=connection_field_factory,
             input_attributes=input_attributes)
         graphene_type = type(_classname, (_baseclass,), _fields)
@@ -158,6 +160,7 @@ def convert_sqlalchemy_composite(composite, registry,
 def convert_sqlalchemy_relationship(relationship, registry,
                                     connection_field_factory=None,
                                     input_attributes=False):
+    from .types import InputObjectType
     direction = relationship.direction
     model = relationship.mapper.entity
 
@@ -172,7 +175,35 @@ def convert_sqlalchemy_relationship(relationship, registry,
                 return connection_field_factory(relationship, registry)
             return graphene.Field(graphene.List(_type))
 
-    return graphene.Dynamic(dynamic_type)
+    if not input_attributes:
+        return graphene.Dynamic(dynamic_type)
+
+    _classname = f'{model.__name__}EmbedInput'
+    _baseclass = InputObjectType
+    graphene_type = registry.get_type_for_relationship_input(_classname)
+
+
+
+    if not graphene_type:
+        inspected_model = inspect(model)
+        primary_key = next(iter(inspected_model.primary_key), None)
+
+        _fields = {
+            'Meta': {'model': model},
+            primary_key.name: convert_sqlalchemy_type(
+                primary_key.type,
+                primary_key,
+                registry,
+                connection_field_factory,
+                input_attributes)
+        }
+        graphene_type = type(_classname, (_baseclass,), _fields)
+        registry.register_type_for_relationship_input(graphene_type)
+
+    return graphene.List(
+        graphene_type,
+        description=get_column_doc(relationship),
+        required=is_column_required(relationship, input_attributes))
 
 
 def convert_sqlalchemy_hybrid_method(t, f, registry=None,
@@ -370,7 +401,7 @@ def convert_table(t, f, registry=None,
 
 
 @convert_sqlalchemy_type.register(sqlalchemy_utils.CompositeType)
-def convert_compositeType_field(t, f, registry=None,
+def convert_composite_type_field(t, f, registry=None,
                                 connection_field_factory=None,
                                 input_attributes=False):
     graphene_type = convert_sqlalchemy_composite(t, registry,

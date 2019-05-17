@@ -1,6 +1,7 @@
 class Registry(object):
     def __init__(self):
         self._registry_models = {}
+        self._registry_inputs = {}
         self._registry_composites = {}
         self._registry_attributes = {}
         self._registry_enums = {}
@@ -21,6 +22,12 @@ class Registry(object):
 
     def get_type_for_model(self, model):
         return self._registry_models.get(model)
+
+    def register_type_for_relationship_input(self, input_cls):
+        self._registry_inputs[input_cls.__name__] = input_cls
+
+    def get_type_for_relationship_input(self, input):
+        return self._registry_inputs.get(input)
 
     def register_attributes(self, attributes_cls):
         self._registry_attributes[attributes_cls.__name__] = attributes_cls
