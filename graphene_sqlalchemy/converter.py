@@ -178,7 +178,7 @@ def convert_sqlalchemy_relationship(relationship, registry,
     if not input_attributes:
         return graphene.Dynamic(dynamic_type)
 
-    _classname = f'{model.__name__}EmbedInput'
+    _classname = f'{model.__name__}RelationshipInput'
     _baseclass = InputObjectType
     graphene_type = registry.get_type_for_relationship_input(_classname)
 
