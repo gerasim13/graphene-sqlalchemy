@@ -1,9 +1,10 @@
 import enum
 import functools
+from collections import OrderedDict
+
 import graphene
 import sqlalchemy
 import sqlalchemy_utils
-from collections import OrderedDict
 from graphene.types.utils import yank_fields_from_attrs
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
@@ -181,8 +182,6 @@ def convert_sqlalchemy_relationship(relationship, registry,
     _classname = f'{model.__name__}RelationshipInput'
     _baseclass = InputObjectType
     graphene_type = registry.get_type_for_relationship_input(_classname)
-
-
 
     if not graphene_type:
         inspected_model = inspect(model)

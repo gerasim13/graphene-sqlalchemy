@@ -1,6 +1,5 @@
 import ast
 import re
-import sys
 
 from setuptools import find_packages, setup
 
@@ -18,6 +17,8 @@ requirements = [
     "SQLAlchemy>=1.1,<2",
     "six>=1.10.0,<2",
     "singledispatch>=3.4.0.3,<4",
+    "graphene_file_upload>=1.2.2",
+    "SQLAlchemy-ImageAttach>=1.1.0"
 ]
 try:
     import enum
