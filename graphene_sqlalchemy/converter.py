@@ -59,9 +59,11 @@ def construct_fields(
         only_fields=(),
         exclude_fields=(),
         field_types=(),
+        type_cast=None,
         connection_field_factory=None,
         input_attributes=False):
     fields = OrderedDict()
+    type_cast = type_cast or dict()
     conv_functions = {
         FieldType.scalar: convert_sqlalchemy_field,
         FieldType.composite: convert_sqlalchemy_composite,
@@ -72,12 +74,20 @@ def construct_fields(
     for name, field, type in iter_fields(model, only_fields, exclude_fields):
         if type not in field_types:
             continue
-        conv_fn = conv_functions.get(type)
-        converted_field = conv_fn(
-            field,
-            registry,
-            connection_field_factory or default_connection_field_factory,
-            input_attributes)
+
+        if name in type_cast:
+            cast_type = type_cast.get(name)
+            converted_field = cast_type(
+                description=get_column_doc(field),
+                required=is_column_required(field, input_attributes))
+        else:
+            conv_fn = conv_functions.get(type)
+            converted_field = conv_fn(
+                field,
+                registry,
+                connection_field_factory or default_connection_field_factory,
+                input_attributes)
+
         if not converted_field:
             continue
         fields[name] = converted_field
@@ -88,12 +98,18 @@ def get_attributes_fields(
         models,
         registry=None,
         field_types=(),
+        only_fields=(),
+        exclude_fields=(),
+        type_cast=None,
         connection_field_factory=None,
         input_attributes=False):
     _fields = yank_fields_from_attrs(construct_fields(
         models,
         registry,
         field_types=field_types,
+        only_fields=only_fields,
+        exclude_fields=exclude_fields,
+        type_cast=type_cast,
         connection_field_factory=connection_field_factory,
         input_attributes=input_attributes
     ), _as=graphene.Field)
@@ -110,7 +126,10 @@ def convert_sqlalchemy_field(f, registry,
 
 def convert_model_to_attributes(m, f=None, registry=None,
                                 connection_field_factory=None,
-                                input_attributes=False):
+                                input_attributes=False,
+                                type_cast=None,
+                                only_fields=(),
+                                exclude_fields=()):
     if not registry:
         registry = get_global_registry()
     assert isinstance(registry, Registry), f'The attribute registry in ' \
@@ -127,6 +146,9 @@ def convert_model_to_attributes(m, f=None, registry=None,
         _fields = get_attributes_fields(
             m, registry,
             field_types=(FieldType.scalar, FieldType.relationship),
+            only_fields=only_fields,
+            exclude_fields=exclude_fields,
+            type_cast=type_cast,
             connection_field_factory=connection_field_factory,
             input_attributes=input_attributes)
         attributes = type(_cls_name, (object,), _fields)

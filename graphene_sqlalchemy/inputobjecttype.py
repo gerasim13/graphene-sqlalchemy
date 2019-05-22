@@ -12,7 +12,14 @@ class InputObjectTypeOptions(graphene.types.inputobjecttype.InputObjectTypeOptio
 
 class InputObjectType(graphene.InputObjectType):
     @classmethod
-    def __init_subclass_with_meta__(cls, container=None, _meta=None, **options):
+    def __init_subclass_with_meta__(
+            cls,
+            container=None,
+            only_fields=(),
+            exclude_fields=(),
+            type_cast=None,
+            _meta=None,
+            **options):
         def _iter_fields(attributes):
             for i in vars(attributes):
                 f = getattr(attributes, i)
@@ -44,6 +51,9 @@ class InputObjectType(graphene.InputObjectType):
             attributes = convert_model_to_attributes(
                 model,
                 connection_field_factory=connection_factory,
+                only_fields=only_fields,
+                exclude_fields=exclude_fields,
+                type_cast=type_cast,
                 input_attributes=True)
 
             for name, field in _iter_fields(attributes):

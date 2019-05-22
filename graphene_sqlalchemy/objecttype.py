@@ -27,6 +27,7 @@ class ObjectType(graphene.ObjectType):
         skip_registry=False,
         only_fields=(),
         exclude_fields=(),
+        type_cast=None,
         connection=None,
         connection_class=None,
         use_connection=None,
@@ -48,20 +49,23 @@ class ObjectType(graphene.ObjectType):
 
         if not attributes:
             attributes = convert_model_to_attributes(
-                model, connection_field_factory=connection_field_factory)
+                model,
+                connection_field_factory=connection_field_factory,
+                only_fields=only_fields,
+                type_cast=type_cast,
+                exclude_fields=exclude_fields,)
 
         if use_connection is None and interfaces:
             use_connection = any(
-                (issubclass(interface, graphene.relay.Node) for interface in interfaces)
-            )
+                (issubclass(interface, graphene.relay.Node)
+                 for interface in interfaces))
 
         if use_connection and not connection:
             # We create the connection automatically
             if not connection_class:
                 connection_class = graphene.relay.Connection
             connection = connection_class.create_type(
-                f'{cls.__name__}Connection', node=cls
-            )
+                f'{cls.__name__}Connection', node=cls)
 
         if connection is not None:
             assert issubclass(connection, graphene.relay.Connection),\
@@ -86,9 +90,13 @@ class ObjectType(graphene.ObjectType):
         _fields.update(get_attributes_fields(
             model,
             registry,
+            only_fields=only_fields,
+            exclude_fields=exclude_fields,
             field_types=(
-                FieldType.composite, FieldType.hybrid, FieldType.relationship
-            )
+                FieldType.composite,
+                FieldType.hybrid,
+                FieldType.relationship
+            ),
         ))
 
         if _meta.fields:
