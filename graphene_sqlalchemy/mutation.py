@@ -3,7 +3,7 @@ from sqlalchemy.inspection import inspect
 
 
 class MutationOptions(graphene.types.mutation.MutationOptions):
-    session_getter = None
+    session = None
 
 
 class Mutation(graphene.Mutation):
@@ -11,23 +11,24 @@ class Mutation(graphene.Mutation):
     def __init_subclass_with_meta__(cls,
                                     resolver=None,
                                     output=None,
-                                    session_getter=None,
+                                    session=None,
                                     arguments=None,
                                     _meta=None,
                                     **options):
         if not _meta:
             _meta = MutationOptions(cls)
-        _meta.session_getter = session_getter or cls.get_session
+        _meta.session = session
+        assert _meta.session, 'db session not provided'
         super().__init_subclass_with_meta__(
             resolver, output, arguments, _meta, **options)
 
     @classmethod
-    def get_session(cls, info):
-        return None
-
-    @classmethod
     def mutate(cls, root, info, input=None):
-        db_session = cls._meta.session_getter(info)
+        db_session = cls._meta.session
+        if callable(db_session):
+            db_session = db_session(info)
+        assert db_session, 'db session not provided'
+
         data = input.to_dictionary(db_session)
         output = cls._meta.output
         assert output, f'no output for {cls}'
