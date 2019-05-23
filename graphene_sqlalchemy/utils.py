@@ -18,6 +18,7 @@ def get_query(model, context):
                 "A query in the model Base or a session in the schema is required for querying.\n"
                 "Read more http://docs.graphene-python.org/projects/sqlalchemy/en/latest/tips/#querying")
         query = session.query(model)
+        session.close()
     return query
 
 
