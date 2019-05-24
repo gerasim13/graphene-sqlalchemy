@@ -9,7 +9,7 @@ def get_session(context):
     return context.get("session")
 
 
-def get_query(model, context):
+def get_query(model, context, result_type):
     query = getattr(model, "query", None)
     if not query:
         session = get_session(context)
@@ -17,7 +17,7 @@ def get_query(model, context):
             raise Exception(
                 "A query in the model Base or a session in the schema is required for querying.\n"
                 "Read more http://docs.graphene-python.org/projects/sqlalchemy/en/latest/tips/#querying")
-        query = session.query(model)
+        query = [result_type(**m._asdict()) for m in session.query(model).all()]
         session.close()
     return query
 

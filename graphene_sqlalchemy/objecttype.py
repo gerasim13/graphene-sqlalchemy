@@ -6,6 +6,7 @@ from .converter import (convert_model_to_attributes, get_attributes_fields,
 from .fields import default_connection_field_factory
 from .registry import get_global_registry, Registry
 from .utils import is_mapped_class, is_mapped_instance, get_query
+from collections import namedtuple
 
 
 class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
@@ -15,6 +16,7 @@ class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
     connection_field_factory = None
     attributes = None
     id = None
+    result_type = None
 
 
 class ObjectType(graphene.ObjectType):
@@ -72,16 +74,6 @@ class ObjectType(graphene.ObjectType):
                 f'The connection must be a Connection.' \
                 f'Received {connection.__name__}'
 
-        if not _meta:
-            _meta = ObjectTypeOptions(cls)
-
-        _meta.id = id or "id"
-        _meta.attributes = attributes
-        _meta.connection = connection
-        _meta.connection_field_factory = connection_field_factory
-        _meta.registry = registry
-        _meta.model = model
-
         _fields = {
             n: getattr(attributes, n) for n in dir(attributes)
             if (not callable(getattr(attributes, n)) and
@@ -99,6 +91,18 @@ class ObjectType(graphene.ObjectType):
             ),
         ))
 
+        if not _meta:
+            _meta = ObjectTypeOptions(cls)
+
+        _meta.id = id or "id"
+        _meta.attributes = attributes
+        _meta.connection = connection
+        _meta.connection_field_factory = connection_field_factory
+        _meta.registry = registry
+        _meta.model = model
+        _meta.result_type = namedtuple(
+            model.__name__, _fields.keys(), defaults=(None,) * len(_fields))
+
         if _meta.fields:
             _meta.fields.update(_fields)
         else:
@@ -113,7 +117,7 @@ class ObjectType(graphene.ObjectType):
 
     @classmethod
     def is_type_of(cls, root, info):
-        if isinstance(root, cls):
+        if isinstance(root, cls) or isinstance(root, cls._meta.result_type):
             return True
         if not is_mapped_instance(root):
             raise Exception(f'Received incompatible instance "{root}".')
@@ -122,7 +126,7 @@ class ObjectType(graphene.ObjectType):
     @classmethod
     def get_query(cls, info):
         model = cls._meta.model
-        return get_query(model, info.context)
+        return get_query(model, info.context, cls._meta.result_type)
 
     @classmethod
     def get_node(cls, info, id):

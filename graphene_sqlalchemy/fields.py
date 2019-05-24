@@ -29,9 +29,11 @@ class UnsortedConnectionField(graphene.relay.ConnectionField):
     def model(self):
         return self.type._meta.node._meta.model
 
-    @classmethod
-    def get_query(cls, model, info, sort=None, **args):
-        query = get_query(model, info.context)
+    def get_query(self, model, info, sort=None, **args):
+        query = get_query(model,
+                          info.context,
+                          self.type._meta.node._meta.result_type)
+
         if sort is not None:
             if isinstance(sort, str):
                 query = query.order_by(sort.value)
@@ -39,10 +41,9 @@ class UnsortedConnectionField(graphene.relay.ConnectionField):
                 query = query.order_by(*(col.value for col in sort))
         return query
 
-    @classmethod
-    def resolve_connection(cls, connection_type, model, info, args, resolved):
+    def resolve_connection(self, connection_type, model, info, args, resolved):
         if resolved is None:
-            resolved = cls.get_query(model, info, **args)
+            resolved = self.get_query(model, info, **args)
         if isinstance(resolved, Query):
             _len = resolved.count()
         else:
@@ -58,19 +59,21 @@ class UnsortedConnectionField(graphene.relay.ConnectionField):
         connection.length = _len
         return connection
 
-    @classmethod
-    def connection_resolver(cls, resolver, connection_type, model, root, info,
-                            **args):
+    def connection_resolver(self, resolver, connection_type, model, root,
+                            info, **args):
         resolved = resolver(root, info, **args)
-        on_resolve = partial(cls.resolve_connection, connection_type, model,
-                             info, args)
+        on_resolve = partial(
+            self.resolve_connection, connection_type, model, info, args)
+
         if is_thenable(resolved):
             return Promise.resolve(resolved).then(on_resolve)
 
         return on_resolve(resolved)
 
     def get_resolver(self, parent_resolver):
-        return partial(self.connection_resolver, parent_resolver, self.type,
+        return partial(self.connection_resolver,
+                       parent_resolver,
+                       self.type,
                        self.model)
 
 
