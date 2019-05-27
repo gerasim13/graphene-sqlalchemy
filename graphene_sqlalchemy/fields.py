@@ -31,8 +31,7 @@ class UnsortedConnectionField(graphene.relay.ConnectionField):
 
     def get_query(self, model, info, sort=None, **args):
         query = get_query(model,
-                          info.context,
-                          self.type._meta.node._meta.result_type)
+                          info.context)
 
         if sort is not None:
             if isinstance(sort, str):

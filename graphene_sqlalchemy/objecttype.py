@@ -16,7 +16,6 @@ class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
     connection_field_factory = None
     attributes = None
     id = None
-    result_type = None
 
 
 class ObjectType(graphene.ObjectType):
@@ -100,8 +99,6 @@ class ObjectType(graphene.ObjectType):
         _meta.connection_field_factory = connection_field_factory
         _meta.registry = registry
         _meta.model = model
-        _meta.result_type = namedtuple(
-            model.__name__, _fields.keys(), defaults=(None,) * len(_fields))
 
         if _meta.fields:
             _meta.fields.update(_fields)
@@ -117,7 +114,7 @@ class ObjectType(graphene.ObjectType):
 
     @classmethod
     def is_type_of(cls, root, info):
-        if isinstance(root, cls) or isinstance(root, cls._meta.result_type):
+        if isinstance(root, cls):
             return True
         if not is_mapped_instance(root):
             raise Exception(f'Received incompatible instance "{root}".')
@@ -126,7 +123,7 @@ class ObjectType(graphene.ObjectType):
     @classmethod
     def get_query(cls, info):
         model = cls._meta.model
-        return get_query(model, info.context, cls._meta.result_type)
+        return get_query(model, info.context)
 
     @classmethod
     def get_node(cls, info, id):
