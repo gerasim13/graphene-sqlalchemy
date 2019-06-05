@@ -49,10 +49,10 @@ class Mutation(graphene.Mutation):
                     if getattr(model, field) == value:
                         continue
                     setattr(model, field, value)
+            session.commit()
         except Exception as e:
             session.rollback()
+            session.close()
             raise e
-        else:
-            session.commit()
 
         return model
