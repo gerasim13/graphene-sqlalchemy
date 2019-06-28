@@ -1,4 +1,6 @@
 import graphene
+import sys
+from collections import namedtuple
 from sqlalchemy.orm.exc import NoResultFound
 
 from .converter import (convert_model_to_attributes, get_attributes_fields,
@@ -6,7 +8,6 @@ from .converter import (convert_model_to_attributes, get_attributes_fields,
 from .fields import default_connection_field_factory
 from .registry import get_global_registry, Registry
 from .utils import is_mapped_class, is_mapped_instance, get_query
-from collections import namedtuple
 
 
 class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
@@ -16,6 +17,11 @@ class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
     connection_field_factory = None
     attributes = None
     id = None
+
+    def freeze(self):
+        if 'pytest' in sys.modules:
+            return
+        return super().freeze()
 
 
 class ObjectType(graphene.ObjectType):

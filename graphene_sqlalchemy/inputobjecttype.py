@@ -1,4 +1,5 @@
 import graphene
+import sys
 from graphql_relay.node.node import from_global_id
 
 from .converter import (convert_model_to_attributes)
@@ -8,6 +9,11 @@ class InputObjectTypeOptions(graphene.types.inputobjecttype.InputObjectTypeOptio
     model = None
     input_model_type = None
     embedded_inputs = None
+
+    def freeze(self):
+        if 'pytest' in sys.modules:
+            return
+        return super().freeze()
 
 
 class InputObjectType(graphene.InputObjectType):

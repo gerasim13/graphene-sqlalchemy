@@ -1,4 +1,5 @@
 import graphene
+import sys
 from sqlalchemy.inspection import inspect
 
 
@@ -6,6 +7,11 @@ class MutationOptions(graphene.types.mutation.MutationOptions):
     session = None
     user_roles = None
     roles_map = None
+
+    def freeze(self):
+        if 'pytest' in sys.modules:
+            return
+        return super().freeze()
 
 
 class Mutation(graphene.Mutation):
