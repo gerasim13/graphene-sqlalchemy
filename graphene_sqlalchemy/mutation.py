@@ -83,13 +83,14 @@ class Mutation(graphene.Mutation):
 
     @staticmethod
     def _available_fields_for_user(user_roles, roles_map, **data):
-        available_roles = list(set(roles_map.keys()) & set(user_roles))
+        all_roles = roles_map or dict()
+        available_roles = list(set(all_roles.keys()) & set(user_roles))
         if not available_roles:
             raise Exception('No roles for user')
 
         fields = {}
         for role in available_roles:
-            fields_for_role = roles_map.get(role)
+            fields_for_role = all_roles.get(role)
             if isinstance(fields_for_role, list):
                 fields_for_role.append('id')
                 for k, v in data.items():
