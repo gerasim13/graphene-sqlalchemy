@@ -82,22 +82,33 @@ class Mutation(graphene.Mutation):
         return model
 
     @staticmethod
+    def _get_fields_for_role(role, roles_map, **data):
+        fields = {}
+        fields_for_role = roles_map.get(role) if roles_map else '*'
+
+        if isinstance(fields_for_role, list):
+            fields_for_role.append('id')
+            for k, v in data.items():
+                if v and k not in fields_for_role:
+                    raise Exception(f'Field {k} not allowed for user')
+                fields[k] = v
+        elif fields_for_role == '*':
+            fields.update(data)
+
+        return fields
+
+    @staticmethod
     def _available_fields_for_user(user_roles, roles_map, **data):
-        if roles_map:
+        fields = {}
+
+        if not roles_map:
+            fields.update(_get_fields_for_role('*', roles_map, **data))
+        else:
             available_roles = list(set(roles_map.keys()) & set(user_roles))
             if not available_roles:
                 raise Exception('No roles for user')
 
-        fields = {}
-        for role in available_roles:
-            fields_for_role = roles_map.get(role) if roles_map else '*'
-            if isinstance(fields_for_role, list):
-                fields_for_role.append('id')
-                for k, v in data.items():
-                    if v and k not in fields_for_role:
-                        raise Exception(f'Field {k} not allowed for user')
-                    fields[k] = v
-            elif fields_for_role == '*':
-                fields.update(data)
+            for role in available_roles:
+                fields.update(_get_fields_for_role(role, roles_map, **data))
 
         return fields
