@@ -81,8 +81,8 @@ class Mutation(graphene.Mutation):
 
         return model
 
-    @staticmethod
-    def _get_fields_for_role(role, roles_map, **data):
+    @classmethod
+    def _get_fields_for_role(cls, role, roles_map, **data):
         fields = {}
         fields_for_role = roles_map.get(role) if roles_map else '*'
 
@@ -97,18 +97,20 @@ class Mutation(graphene.Mutation):
 
         return fields
 
-    @staticmethod
-    def _available_fields_for_user(user_roles, roles_map, **data):
+    @classmethod
+    def _available_fields_for_user(cls, user_roles, roles_map, **data):
         fields = {}
 
         if not roles_map:
-            fields.update(_get_fields_for_role('*', roles_map, **data))
+            fields.update(cls._get_fields_for_role('*', roles_map, **data))
         else:
             available_roles = list(set(roles_map.keys()) & set(user_roles))
             if not available_roles:
                 raise Exception('No roles for user')
 
             for role in available_roles:
-                fields.update(_get_fields_for_role(role, roles_map, **data))
+                fields.update(cls._get_fields_for_role(
+                    role, roles_map, **data
+                ))
 
         return fields
