@@ -1,6 +1,7 @@
 import graphene
 import sys
 from collections import namedtuple
+from graphene.relay.node import InterfaceOptions
 from sqlalchemy.orm.exc import NoResultFound
 
 from .converter import (convert_model_to_attributes, get_attributes_fields,
@@ -8,6 +9,29 @@ from .converter import (convert_model_to_attributes, get_attributes_fields,
 from .fields import default_connection_field_factory
 from .registry import get_global_registry, Registry
 from .utils import is_mapped_class, is_mapped_instance, get_query
+
+
+class RelayNode(graphene.relay.Node):
+    model_name = None
+
+    @classmethod
+    def __init_subclass_with_meta__(
+            cls,
+            model=None,
+            **options):
+        assert model, 'Model not provided'
+        cls.model_name = model.__name__
+        super().__init_subclass_with_meta__(**options)
+
+    @classmethod
+    def from_global_id(cls, global_id):
+        try:
+            global_id = from_global_id(global_id)
+        except Exception as _:
+            pass
+        if isinstance(global_id, str):
+            global_id = (cls.model_name, global_id)
+        return global_id
 
 
 class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
