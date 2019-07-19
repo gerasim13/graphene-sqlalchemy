@@ -1,11 +1,12 @@
 import graphene
 import sys
-from graphql_relay.node.node import from_global_id
+from graphene.types.inputobjecttype import InputObjectTypeOptions as Options
 
-from .converter import (convert_model_to_attributes)
+from .converter import convert_model_to_attributes
+from .relay import from_global_id
 
 
-class InputObjectTypeOptions(graphene.types.inputobjecttype.InputObjectTypeOptions):
+class InputObjectTypeOptions(Options):
     model = None
     input_model_type = None
     embedded_inputs = None
@@ -57,6 +58,7 @@ class InputObjectType(graphene.InputObjectType):
             attributes = convert_model_to_attributes(
                 model,
                 connection_field_factory=connection_factory,
+                attributes_name=model.__name__ + 'InputAttributes',
                 only_fields=only_fields,
                 exclude_fields=exclude_fields,
                 type_cast=type_cast,

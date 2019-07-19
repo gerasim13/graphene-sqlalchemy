@@ -1,6 +1,5 @@
-from functools import partial
-
 import graphene
+from functools import partial
 from graphene.relay import Connection
 from graphene.relay.connection import PageInfo
 from graphql_relay.connection.arrayconnection import connection_from_list_slice

@@ -8,30 +8,8 @@ from .converter import (convert_model_to_attributes, get_attributes_fields,
                         FieldType)
 from .fields import default_connection_field_factory
 from .registry import get_global_registry, Registry
+from .relay import Node
 from .utils import is_mapped_class, is_mapped_instance, get_query
-
-
-class RelayNode(graphene.relay.Node):
-    model_name = None
-
-    @classmethod
-    def __init_subclass_with_meta__(
-            cls,
-            model=None,
-            **options):
-        assert model, 'Model not provided'
-        cls.model_name = model.__name__
-        super().__init_subclass_with_meta__(**options)
-
-    @classmethod
-    def from_global_id(cls, global_id):
-        try:
-            global_id = from_global_id(global_id)
-        except Exception as _:
-            pass
-        if isinstance(global_id, str):
-            global_id = (cls.model_name, global_id)
-        return global_id
 
 
 class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
@@ -82,13 +60,14 @@ class ObjectType(graphene.ObjectType):
             attributes = convert_model_to_attributes(
                 model,
                 connection_field_factory=connection_field_factory,
+                attributes_name=model.__name__ + 'Attributes',
                 only_fields=only_fields,
                 type_cast=type_cast,
-                exclude_fields=exclude_fields,)
+                exclude_fields=exclude_fields)
 
         if use_connection is None and interfaces:
             use_connection = any(
-                (issubclass(interface, graphene.relay.Node)
+                (issubclass(interface, Node)
                  for interface in interfaces))
 
         if use_connection and not connection:
@@ -152,13 +131,19 @@ class ObjectType(graphene.ObjectType):
 
     @classmethod
     def get_query(cls, info):
-        model = cls._meta.model
-        return get_query(model, info.context)
+        return get_query(cls._meta.model, info.context)
 
     @classmethod
     def get_node(cls, info, id):
         try:
             return cls.get_query(info).get(id)
+        except NoResultFound:
+            return None
+
+    @classmethod
+    def filter_node(cls, info, **kwargs):
+        try:
+            return cls.get_query(info).filter_by(**kwargs).first()
         except NoResultFound:
             return None
 

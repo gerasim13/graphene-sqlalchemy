@@ -1,10 +1,9 @@
 import enum
 import functools
-from collections import OrderedDict
-
 import graphene
 import sqlalchemy
 import sqlalchemy_utils
+from collections import OrderedDict
 from graphene.types.utils import yank_fields_from_attrs
 from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
@@ -124,8 +123,10 @@ def convert_sqlalchemy_field(f, registry,
                                    input_attributes)
 
 
-def convert_model_to_attributes(m, f=None, registry=None,
+def convert_model_to_attributes(m,
+                                registry=None,
                                 connection_field_factory=None,
+                                attributes_name=None,
                                 input_attributes=False,
                                 type_cast=None,
                                 only_fields=(),
@@ -136,12 +137,10 @@ def convert_model_to_attributes(m, f=None, registry=None,
         f'{registry.__class__.__name__} needs to be an instance of Registry, '\
         f'received {registry}.'
 
-    if input_attributes:
-        _cls_name = m.__name__ + 'InputAttribute'
-    else:
-        _cls_name = m.__name__ + 'Attribute'
+    if not attributes_name:
+        attributes_name = m.__name__ + 'Attribute'
+    attributes = registry.get_attributes_for_model(attributes_name)
 
-    attributes = registry.get_attributes_for_model(_cls_name)
     if not attributes:
         _fields = get_attributes_fields(
             m, registry,
@@ -151,7 +150,7 @@ def convert_model_to_attributes(m, f=None, registry=None,
             type_cast=type_cast,
             connection_field_factory=connection_field_factory,
             input_attributes=input_attributes)
-        attributes = type(_cls_name, (object,), _fields)
+        attributes = type(attributes_name, (object,), _fields)
         registry.register_attributes(attributes)
     return attributes
 
