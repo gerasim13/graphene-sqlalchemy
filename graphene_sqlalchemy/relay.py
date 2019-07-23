@@ -2,7 +2,7 @@ import sys
 from collections import OrderedDict
 from functools import partial
 from graphene.relay.node import GlobalID
-from graphene.types import ID, Field, Interface, ObjectType, Argument
+from graphene.types import ID, List, Field, Interface, ObjectType, Argument
 from graphene.types.base import BaseOptions, BaseType
 from graphene.types.utils import get_type
 from graphql_relay import from_global_id, to_global_id
@@ -17,6 +17,7 @@ class InterfaceOptions(BaseOptions):
     fields = None  # type: Dict[str, Field]
     filter_fields = None  # type: Dict[str, Field]
     model = None
+    return_many = None
 
     def freeze(self):
         if 'pytest' in sys.modules:
@@ -32,6 +33,7 @@ class NodeField(Field):
             deprecation_reason=None,
             name=None,
             arguments=None,
+            return_many=None,
             **kwargs):
         assert issubclass(node, Node), "NodeField can only operate in Nodes"
         self.node_type = node
@@ -40,10 +42,14 @@ class NodeField(Field):
         if not arguments:
             arguments = {'id': ID(required=True)}
 
+        # If we don's specify a type, the field type will be the node
+        # interface
+        field_type = type or node
+        if return_many:
+            field_type = List(field_type)
+
         super().__init__(
-            # If we don's specify a type, the field type will be the node
-            # interface
-            type or node,
+            field_type,
             description="The ID of the object",
             **arguments,
         )
@@ -84,11 +90,13 @@ class Node(AbstractNode):
             type_cast=None,
             exclude_fields=None,
             filter_fields=None,
+            return_many=None,
             connection_field_factory=default_connection_field_factory,
             **options):
         assert model, 'Model not provided'
         _meta = InterfaceOptions(cls)
         _meta.model = model
+        _meta.return_many = return_many
 
         if filter_fields:
             _meta.filter_fields = {}
@@ -119,13 +127,19 @@ class Node(AbstractNode):
 
     @classmethod
     def Field(cls, *args, **kwargs):  # noqa: N802
-        kwargs.update({'arguments': cls._meta.filter_fields})
+        kwargs.update({
+            'arguments': cls._meta.filter_fields,
+            'return_many': cls._meta.return_many
+        })
         return NodeField(cls, *args, **kwargs)
 
     @classmethod
     def node_resolver(cls, only_type, root, info, **kwargs):
         if 'id' not in kwargs:
-            return cls.get_node_from_filter(info, **kwargs)
+            return cls.get_node_from_filter(
+                info,
+                return_many=cls._meta.return_many,
+                **kwargs)
 
         return cls.get_node_from_global_id(
             info,
@@ -133,11 +147,13 @@ class Node(AbstractNode):
             only_type=only_type)
 
     @classmethod
-    def get_node_from_filter(cls, info, **filter_fields):
+    def get_node_from_filter(cls, info,
+                             return_many=False,
+                             **filter_fields):
         _type = cls._meta.model.__name__
         graphene_type = info.schema.get_type(_type).graphene_type
         filter_node = getattr(graphene_type, "filter_node", None)
-        node = filter_node(info, **filter_fields)
+        node = filter_node(info, return_many=return_many, **filter_fields)
         return node
 
     @classmethod
@@ -157,8 +173,9 @@ class Node(AbstractNode):
             return None
 
         get_node = getattr(graphene_type, "get_node", None)
-        node = get_node(info, _id) if get_node else None
-        return node
+        if not get_node:
+            return None
+        return get_node(info, _id)
 
     @classmethod
     def from_global_id(cls, global_id):
