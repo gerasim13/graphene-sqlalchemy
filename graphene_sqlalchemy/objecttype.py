@@ -19,6 +19,7 @@ class ObjectTypeOptions(graphene.types.objecttype.ObjectTypeOptions):
     connection = None
     connection_field_factory = None
     attributes = None
+    return_many = None
     id = None
 
     def freeze(self):
@@ -42,6 +43,7 @@ class ObjectType(graphene.ObjectType):
         connection_class=None,
         use_connection=None,
         interfaces=(),
+        return_many=None,
         id=None,
         connection_field_factory=default_connection_field_factory,
         _meta=None,
@@ -104,6 +106,7 @@ class ObjectType(graphene.ObjectType):
             _meta = ObjectTypeOptions(cls)
 
         _meta.id = id or "id"
+        _meta.return_many = return_many
         _meta.attributes = attributes
         _meta.connection = connection
         _meta.connection_field_factory = connection_field_factory
