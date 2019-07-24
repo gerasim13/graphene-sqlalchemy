@@ -2,8 +2,9 @@ import graphene
 import sys
 from collections import namedtuple
 from graphene.relay.node import InterfaceOptions
-from sqlalchemy import or_
+from sqlalchemy import or_, types
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.sql.expression import cast
 
 from .converter import (convert_model_to_attributes, get_attributes_fields,
                         FieldType)
@@ -151,11 +152,17 @@ class ObjectType(graphene.ObjectType):
             query = cls.get_query(info)
             for field, value in kwargs.items():
                 column = getattr(cls._meta.model, field)
-                if isinstance(value, list):
-                    filter_args.append(or_(*[
-                        column.contains('{' + v + '}') for v in value]))
+                if isinstance(column.type, types.ARRAY):
+                    if isinstance(value, list):
+                        filter_args.append(or_(*[
+                            column.contains('{' + v + '}') for v in value]))
+                    elif isinstance(value, str):
+                        filter_args.append(
+                            column.contains(value))
+                    else:
+                        filter_args.append(column == cast(value, column.type))
                 else:
-                    filter_args.append(column == value)
+                    filter_args.append(column == cast(value, column.type))
             filter_query = query.filter(*filter_args)
         except NoResultFound:
             return None
