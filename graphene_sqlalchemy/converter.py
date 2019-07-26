@@ -81,11 +81,13 @@ def construct_fields(
                 required=is_column_required(field, input_attributes))
         else:
             conv_fn = conv_functions.get(type)
+            conv_field_factory = connection_field_factory or default_connection_field_factory
             converted_field = conv_fn(
+                type,
                 field,
-                registry,
-                connection_field_factory or default_connection_field_factory,
-                input_attributes)
+                registry=registry,
+                connection_field_factory=conv_field_factory,
+                input_attributes=input_attributes)
 
         if not converted_field:
             continue
@@ -115,7 +117,7 @@ def get_attributes_fields(
     return _fields
 
 
-def convert_sqlalchemy_field(f, registry,
+def convert_sqlalchemy_field(t, f, registry=None,
                              connection_field_factory=None,
                              input_attributes=False):
     return convert_sqlalchemy_type(f.type, f, registry,
@@ -179,7 +181,8 @@ def convert_sqlalchemy_composite(composite, registry,
     return graphene_type
 
 
-def convert_sqlalchemy_relationship(relationship, registry,
+def convert_sqlalchemy_relationship(t, relationship,
+                                    registry=None,
                                     connection_field_factory=None,
                                     input_attributes=False):
     from .types import InputObjectType
@@ -230,6 +233,7 @@ def convert_sqlalchemy_hybrid_method(t, f, registry=None,
                                      connection_field_factory=None,
                                      input_attributes=False):
     return graphene.String(
+        name=f.__name__,
         description=getattr(f, "__doc__", None),
         required=False)
 
@@ -237,7 +241,8 @@ def convert_sqlalchemy_hybrid_method(t, f, registry=None,
 def convert_id_field(t, f, registry=None,
                      connection_field_factory=None,
                      input_attributes=False):
-    return graphene.ID(description=get_column_doc(f),
+    return graphene.ID(name=f.name,
+                       description=get_column_doc(f),
                        required=is_column_required(f, input_attributes))
 
 
@@ -257,7 +262,8 @@ def convert_uuid_field(t, f, registry=None,
         return convert_id_field(t, f, registry,
                                 connection_field_factory,
                                 input_attributes)
-    return graphene.UUID(description=get_column_doc(f),
+    return graphene.UUID(name=f.name,
+                         description=get_column_doc(f),
                          required=is_column_required(f, input_attributes))
 
 
@@ -278,7 +284,8 @@ def convert_str_field(t, f, registry=None,
         return convert_id_field(t, f, registry,
                                 connection_field_factory,
                                 input_attributes)
-    return graphene.String(description=get_column_doc(f),
+    return graphene.String(name=f.name,
+                           description=get_column_doc(f),
                            required=is_column_required(f, input_attributes))
 
 
@@ -292,7 +299,8 @@ def convert_int_field(t, f, registry=None,
         return convert_id_field(t, f, registry,
                                 connection_field_factory,
                                 input_attributes)
-    return graphene.Int(description=get_column_doc(f),
+    return graphene.Int(name=f.name,
+                        description=get_column_doc(f),
                         required=is_column_required(f, input_attributes))
 
 
@@ -311,7 +319,8 @@ def convert_float_field(t, f, registry=None,
 def convert_bool_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    return graphene.Boolean(description=get_column_doc(f),
+    return graphene.Boolean(name=f.name,
+                            description=get_column_doc(f),
                             required=is_column_required(f, input_attributes))
 
 
@@ -320,7 +329,8 @@ def convert_bool_field(t, f, registry=None,
 def convert_datetime_field(t, f, registry=None,
                            connection_field_factory=None,
                            input_attributes=False):
-    return graphene.DateTime(description=get_column_doc(f),
+    return graphene.DateTime(name=f.name,
+                             description=get_column_doc(f),
                              required=is_column_required(f, input_attributes))
 
 
@@ -329,7 +339,8 @@ def convert_datetime_field(t, f, registry=None,
 def convert_date_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    return graphene.Date(description=get_column_doc(f),
+    return graphene.Date(name=f.name,
+                         description=get_column_doc(f),
                          required=is_column_required(f, input_attributes))
 
 
@@ -339,7 +350,8 @@ def convert_date_field(t, f, registry=None,
 def convert_datetime_field(t, f, registry=None,
                            connection_field_factory=None,
                            input_attributes=False):
-    return graphene.Time(description=get_column_doc(f),
+    return graphene.Time(name=f.name,
+                         description=get_column_doc(f),
                          required=is_column_required(f, input_attributes))
 
 
@@ -349,7 +361,8 @@ def convert_datetime_field(t, f, registry=None,
 def convert_json_field(t, f, registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    return graphene.JSONString(description=get_column_doc(f),
+    return graphene.JSONString(name=f.name,
+                               description=get_column_doc(f),
                                required=is_column_required(f, input_attributes))
 
 
@@ -372,6 +385,7 @@ def convert_enum_field(t, f, registry=None,
 
     return graphene.Field(
         graphene_type,
+        name=f.name,
         description=get_column_doc(f),
         required=is_column_required(f, input_attributes),
     )
@@ -395,6 +409,7 @@ def convert_choice_type_field(t, f, registry=None,
 
     return graphene.Field(
         graphene_type,
+        name=f.name,
         description=get_column_doc(f),
         required=is_column_required(f, input_attributes),
     )
@@ -408,6 +423,7 @@ def convert_array_field(t, f, registry=None,
                                     connection_field_factory,
                                     input_attributes)
     return graphene.List(field.type if hasattr(field, 'type') else type(field),
+                         name=f.name,
                          description=get_column_doc(f),
                          required=is_column_required(f, input_attributes))
 
@@ -416,7 +432,8 @@ def convert_array_field(t, f, registry=None,
 def convert_table(t, f, registry=None,
                   connection_field_factory=None,
                   input_attributes=False):
-    return graphene.Dynamic(description=get_column_doc(f),
+    return graphene.Dynamic(name=f.name,
+                            description=get_column_doc(f),
                             required=is_column_required(f, input_attributes))
 
 
@@ -428,5 +445,6 @@ def convert_composite_type_field(t, f, registry=None,
                                                  connection_field_factory,
                                                  input_attributes)
     return graphene.Field(graphene_type,
+                          name=f.name,
                           description=get_column_doc(f),
                           required=is_column_required(f, input_attributes))
