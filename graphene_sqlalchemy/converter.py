@@ -12,7 +12,7 @@ from sqlalchemy.orm import interfaces
 
 from .fields import default_connection_field_factory
 from .registry import Registry, get_global_registry
-from .utils import get_column_doc, is_column_required
+from .utils import get_column_doc, is_column_required, is_column_nullable
 
 
 class FieldType(enum.Enum):
@@ -31,6 +31,12 @@ def iter_fields(model, only_fields=(), exclude_fields=()):
         # We skip this field if we specify only_fields and is not
         # in there. Or when we exclude this field in exclude_fields\
         return is_not_in_only or is_excluded
+
+    for f in getattr(mapper, 'synonyms', []):
+        field = f.name
+        if not isinstance(field, sqlalchemy.Column) or _skip_field_with_name(field.name):
+            continue
+        yield f.class_attribute.key, field, FieldType.scalar
 
     for f in getattr(mapper, 'columns', []):
         if _skip_field_with_name(f.name):
@@ -85,6 +91,7 @@ def construct_fields(
             converted_field = conv_fn(
                 type,
                 field,
+                name,
                 registry=registry,
                 connection_field_factory=conv_field_factory,
                 input_attributes=input_attributes)
@@ -117,10 +124,11 @@ def get_attributes_fields(
     return _fields
 
 
-def convert_sqlalchemy_field(t, f, registry=None,
+def convert_sqlalchemy_field(t, f, name,
+                             registry=None,
                              connection_field_factory=None,
                              input_attributes=False):
-    return convert_sqlalchemy_type(f.type, f, registry,
+    return convert_sqlalchemy_type(f.type, f, name, registry,
                                    connection_field_factory,
                                    input_attributes)
 
@@ -157,7 +165,8 @@ def convert_model_to_attributes(m,
     return attributes
 
 
-def convert_sqlalchemy_composite(composite, registry,
+def convert_sqlalchemy_composite(composite, name,
+                                 registry=None,
                                  connection_field_factory=None,
                                  input_attributes=False):
     from .types import InputObjectType, ObjectType
@@ -181,7 +190,7 @@ def convert_sqlalchemy_composite(composite, registry,
     return graphene_type
 
 
-def convert_sqlalchemy_relationship(t, relationship,
+def convert_sqlalchemy_relationship(t, relationship, name,
                                     registry=None,
                                     connection_field_factory=None,
                                     input_attributes=False):
@@ -216,6 +225,7 @@ def convert_sqlalchemy_relationship(t, relationship,
             primary_key.name: convert_sqlalchemy_type(
                 primary_key.type,
                 primary_key,
+                name,
                 registry,
                 connection_field_factory,
                 input_attributes)
@@ -229,25 +239,29 @@ def convert_sqlalchemy_relationship(t, relationship,
         required=is_column_required(relationship, input_attributes))
 
 
-def convert_sqlalchemy_hybrid_method(t, f, registry=None,
+def convert_sqlalchemy_hybrid_method(t, f, name,
+                                     registry=None,
                                      connection_field_factory=None,
                                      input_attributes=False):
     return graphene.String(
-        name=f.__name__,
+        name=name or f.__name__,
         description=getattr(f, "__doc__", None),
         required=False)
 
 
-def convert_id_field(t, f, registry=None,
+def convert_id_field(t, f, name,
+                     registry=None,
                      connection_field_factory=None,
                      input_attributes=False):
-    return graphene.ID(name=f.name,
-                       description=get_column_doc(f),
-                       required=is_column_required(f, input_attributes))
+    return graphene.ID(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @functools.singledispatch
-def convert_sqlalchemy_type(t, f, registry=None,
+def convert_sqlalchemy_type(t, f, name,
+                            registry=None,
                             connection_field_factory=None,
                             input_attributes=False):
     raise Exception(f"Don't know how to convert the sqlalchemy type {t} "
@@ -255,16 +269,20 @@ def convert_sqlalchemy_type(t, f, registry=None,
 
 
 @convert_sqlalchemy_type.register(postgresql.UUID)
-def convert_uuid_field(t, f, registry=None,
+def convert_uuid_field(t, f, name,
+                       registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
     if f.primary_key:
-        return convert_id_field(t, f, registry,
-                                connection_field_factory,
-                                input_attributes)
-    return graphene.UUID(name=f.name,
-                         description=get_column_doc(f),
-                         required=is_column_required(f, input_attributes))
+        return convert_id_field(
+            t, f, None,
+            registry,
+            connection_field_factory,
+            input_attributes)
+    return graphene.UUID(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.String)
@@ -277,97 +295,119 @@ def convert_uuid_field(t, f, registry=None,
 @convert_sqlalchemy_type.register(sqlalchemy.ForeignKey)
 @convert_sqlalchemy_type.register(sqlalchemy_utils.ColorType)
 @convert_sqlalchemy_type.register(sqlalchemy_utils.CountryType)
-def convert_str_field(t, f, registry=None,
+def convert_str_field(t, f, name,
+                      registry=None,
                       connection_field_factory=None,
                       input_attributes=False):
     if f.primary_key:
-        return convert_id_field(t, f, registry,
-                                connection_field_factory,
-                                input_attributes)
-    return graphene.String(name=f.name,
-                           description=get_column_doc(f),
-                           required=is_column_required(f, input_attributes))
+        return convert_id_field(
+            t, f, None,
+            registry,
+            connection_field_factory,
+            input_attributes)
+    return graphene.String(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.SmallInteger)
 @convert_sqlalchemy_type.register(sqlalchemy.Integer)
 @convert_sqlalchemy_type.register(sqlalchemy.INTEGER)
-def convert_int_field(t, f, registry=None,
+def convert_int_field(t, f, name,
+                      registry=None,
                       connection_field_factory=None,
                       input_attributes=False):
     if f.primary_key:
-        return convert_id_field(t, f, registry,
-                                connection_field_factory,
-                                input_attributes)
-    return graphene.Int(name=f.name,
-                        description=get_column_doc(f),
-                        required=is_column_required(f, input_attributes))
+        return convert_id_field(
+            t, f, None,
+            registry,
+            connection_field_factory,
+            input_attributes)
+    return graphene.Int(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Float)
 @convert_sqlalchemy_type.register(sqlalchemy.FLOAT)
 @convert_sqlalchemy_type.register(sqlalchemy.DECIMAL)
-def convert_float_field(t, f, registry=None,
+def convert_float_field(t, f, name,
+                        registry=None,
                         connection_field_factory=None,
                         input_attributes=False):
-    return graphene.Float(description=get_column_doc(f),
-                          required=is_column_required(f, input_attributes))
+    return graphene.Float(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Boolean)
 @convert_sqlalchemy_type.register(sqlalchemy.BOOLEAN)
-def convert_bool_field(t, f, registry=None,
+def convert_bool_field(t, f, name,
+                       registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    return graphene.Boolean(name=f.name,
-                            description=get_column_doc(f),
-                            required=is_column_required(f, input_attributes))
+    return graphene.Boolean(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.DateTime)
 @convert_sqlalchemy_type.register(sqlalchemy.DATETIME)
-def convert_datetime_field(t, f, registry=None,
+def convert_datetime_field(t, f, name,
+                           registry=None,
                            connection_field_factory=None,
                            input_attributes=False):
-    return graphene.DateTime(name=f.name,
-                             description=get_column_doc(f),
-                             required=is_column_required(f, input_attributes))
+    return graphene.DateTime(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Date)
 @convert_sqlalchemy_type.register(sqlalchemy.DATE)
-def convert_date_field(t, f, registry=None,
+def convert_date_field(t, f, name,
+                       registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    return graphene.Date(name=f.name,
-                         description=get_column_doc(f),
-                         required=is_column_required(f, input_attributes))
+    return graphene.Date(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Time)
 @convert_sqlalchemy_type.register(sqlalchemy.TIME)
 @convert_sqlalchemy_type.register(sqlalchemy.TIMESTAMP)
-def convert_datetime_field(t, f, registry=None,
+def convert_datetime_field(t, f, name,
+                           registry=None,
                            connection_field_factory=None,
                            input_attributes=False):
-    return graphene.Time(name=f.name,
-                         description=get_column_doc(f),
-                         required=is_column_required(f, input_attributes))
+    return graphene.Time(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.JSON)
 @convert_sqlalchemy_type.register(postgresql.HSTORE)
 @convert_sqlalchemy_type.register(postgresql.JSONB)
-def convert_json_field(t, f, registry=None,
+def convert_json_field(t, f, name,
+                       registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    return graphene.JSONString(name=f.name,
-                               description=get_column_doc(f),
-                               required=is_column_required(f, input_attributes))
+    return graphene.JSONString(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Enum)
-def convert_enum_field(t, f, registry=None,
+def convert_enum_field(t, f, name,
+                       registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
     enum_class = getattr(t, 'enum_class', None)
@@ -385,14 +425,14 @@ def convert_enum_field(t, f, registry=None,
 
     return graphene.Field(
         graphene_type,
-        name=f.name,
+        name=name or f.name,
         description=get_column_doc(f),
-        required=is_column_required(f, input_attributes),
-    )
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy_utils.ChoiceType)
-def convert_choice_type_field(t, f, registry=None,
+def convert_choice_type_field(t, f, name,
+                              registry=None,
                               connection_field_factory=None,
                               input_attributes=False):
     choices = t.choices
@@ -409,42 +449,49 @@ def convert_choice_type_field(t, f, registry=None,
 
     return graphene.Field(
         graphene_type,
-        name=f.name,
+        name=name or f.name,
         description=get_column_doc(f),
-        required=is_column_required(f, input_attributes),
-    )
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.ARRAY)
-def convert_array_field(t, f, registry=None,
+def convert_array_field(t, f, name,
+                        registry=None,
                         connection_field_factory=None,
                         input_attributes=False):
-    field = convert_sqlalchemy_type(t.item_type, f, registry,
+    field = convert_sqlalchemy_type(t.item_type, f,
+                                    name,
+                                    registry,
                                     connection_field_factory,
                                     input_attributes)
-    return graphene.List(field.type if hasattr(field, 'type') else type(field),
-                         name=f.name,
-                         description=get_column_doc(f),
-                         required=is_column_required(f, input_attributes))
+    return graphene.List(
+        field.type if hasattr(field, 'type') else type(field),
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy.Table)
-def convert_table(t, f, registry=None,
+def convert_table(t, f, name,
+                  registry=None,
                   connection_field_factory=None,
                   input_attributes=False):
-    return graphene.Dynamic(name=f.name,
-                            description=get_column_doc(f),
-                            required=is_column_required(f, input_attributes))
+    return graphene.Dynamic(
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))
 
 
 @convert_sqlalchemy_type.register(sqlalchemy_utils.CompositeType)
-def convert_composite_type_field(t, f, registry=None,
-                                connection_field_factory=None,
-                                input_attributes=False):
+def convert_composite_type_field(t, f, name,
+                                 registry=None,
+                                 connection_field_factory=None,
+                                 input_attributes=False):
     graphene_type = convert_sqlalchemy_composite(t, registry,
                                                  connection_field_factory,
                                                  input_attributes)
-    return graphene.Field(graphene_type,
-                          name=f.name,
-                          description=get_column_doc(f),
-                          required=is_column_required(f, input_attributes))
+    return graphene.Field(
+        graphene_type,
+        name=name or f.name,
+        description=get_column_doc(f),
+        required=is_column_required(f, input_attributes))

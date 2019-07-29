@@ -141,7 +141,8 @@ class ObjectType(graphene.ObjectType):
     @classmethod
     def get_node(cls, info, id):
         try:
-            return cls.get_query(info).get(id)
+            node = cls.get_query(info).get(id)
+            return node
         except NoResultFound:
             return None
 
@@ -164,10 +165,10 @@ class ObjectType(graphene.ObjectType):
                 else:
                     filter_args.append(column == cast(value, column.type))
             filter_query = query.filter(*filter_args)
+            node = filter_query.all() if return_many else filter_query.first()
+            return node
         except NoResultFound:
             return None
-        assert filter_query
-        return filter_query.all() if return_many else filter_query.first()
 
     @classmethod
     def resolve_id(cls, root, info, **args):

@@ -144,8 +144,7 @@ class Node(AbstractNode):
         graphene_type = info.schema.get_type(_type).graphene_type
         filter_node = getattr(graphene_type, "filter_node", None)
         return_many = isinstance(info.return_type,  GraphQLList)
-        node = filter_node(info, return_many=return_many, **filter_fields)
-        return node
+        return filter_node(info, return_many=return_many, **filter_fields)
 
     @classmethod
     def get_node_from_global_id(cls, info, global_id, only_type=None):
