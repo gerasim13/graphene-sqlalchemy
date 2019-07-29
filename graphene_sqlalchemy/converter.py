@@ -32,13 +32,20 @@ def iter_fields(model, only_fields=(), exclude_fields=()):
         # in there. Or when we exclude this field in exclude_fields\
         return is_not_in_only or is_excluded
 
-    for f in getattr(mapper, 'synonyms', []):
-        field = f.name
-        if not isinstance(field, sqlalchemy.Column) or _skip_field_with_name(field.name):
+    synonyms = getattr(mapper, 'synonyms', [])
+    columns = getattr(mapper, 'columns', [])
+
+    for f in synonyms:
+        field = None
+        if isinstance(f.name, sqlalchemy.Column):
+            field = f.name
+        elif isinstance(f.name, str):
+            field = getattr(columns, f.name)
+        if field is None or _skip_field_with_name(field.name):
             continue
         yield f.class_attribute.key, field, FieldType.scalar
 
-    for f in getattr(mapper, 'columns', []):
+    for f in columns:
         if _skip_field_with_name(f.name):
             continue
         yield f.name, f, FieldType.scalar
