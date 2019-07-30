@@ -9,6 +9,7 @@ from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import interfaces
+from sqlalchemy.sql import type_api
 
 from .fields import default_connection_field_factory
 from .registry import Registry, get_global_registry
@@ -34,6 +35,9 @@ def iter_fields(model, only_fields=(), exclude_fields=()):
 
     synonyms = getattr(mapper, 'synonyms', [])
     columns = getattr(mapper, 'columns', [])
+    composites = getattr(mapper, 'composites', [])
+    all_orm_descriptors = getattr(mapper, 'all_orm_descriptors', [])
+    relationships = getattr(mapper, 'relationships', [])
 
     for f in synonyms:
         field = None
@@ -50,17 +54,17 @@ def iter_fields(model, only_fields=(), exclude_fields=()):
             continue
         yield f.name, f, FieldType.scalar
 
-    for name, f in getattr(mapper, 'composites', []):
+    for name, f in composites:
         if _skip_field_with_name(f.name):
             continue
         yield f.name, f, FieldType.composite
 
-    for f in getattr(mapper, 'all_orm_descriptors', []):
+    for f in all_orm_descriptors:
         if type(f) != hybrid_property or _skip_field_with_name(f.__name__):
             continue
         yield f.__name__, f, FieldType.hybrid
 
-    for f in getattr(mapper, 'relationships', []):
+    for f in relationships:
         if _skip_field_with_name(f.key):
             continue
         yield f.key, f, FieldType.relationship
@@ -250,6 +254,14 @@ def convert_sqlalchemy_hybrid_method(t, f, name,
                                      registry=None,
                                      connection_field_factory=None,
                                      input_attributes=False):
+    property_type = f.info.get('type')
+    if hasattr(property_type, '_to_instance'):
+        property_type = property_type._to_instance(property_type)
+        return convert_sqlalchemy_type(
+            property_type, f, name,
+            registry,
+            connection_field_factory,
+            input_attributes)
     return graphene.String(
         name=name or f.__name__,
         description=getattr(f, "__doc__", None),
@@ -280,7 +292,7 @@ def convert_uuid_field(t, f, name,
                        registry=None,
                        connection_field_factory=None,
                        input_attributes=False):
-    if f.primary_key:
+    if getattr(f, 'primary_key', None):
         return convert_id_field(
             t, f, None,
             registry,
@@ -306,7 +318,7 @@ def convert_str_field(t, f, name,
                       registry=None,
                       connection_field_factory=None,
                       input_attributes=False):
-    if f.primary_key:
+    if getattr(f, 'primary_key', None):
         return convert_id_field(
             t, f, None,
             registry,
@@ -325,7 +337,7 @@ def convert_int_field(t, f, name,
                       registry=None,
                       connection_field_factory=None,
                       input_attributes=False):
-    if f.primary_key:
+    if getattr(f, 'primary_key', None):
         return convert_id_field(
             t, f, None,
             registry,
