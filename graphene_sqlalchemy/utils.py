@@ -96,7 +96,6 @@ def is_mapped_class(cls):
     try:
         class_mapper(cls)
     except (ArgumentError, UnmappedClassError) as _:
-        print(_)
         return False
     else:
         return True

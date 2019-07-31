@@ -9,11 +9,13 @@ from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import interfaces
+from sqlalchemy.orm.base import object_mapper
 from sqlalchemy.sql import type_api
 
 from .fields import default_connection_field_factory
 from .registry import Registry, get_global_registry
-from .utils import get_column_doc, is_column_required, is_column_nullable
+from .utils import (get_column_doc, is_column_required, is_column_nullable,
+                    is_mapped_class)
 
 
 class FieldType(enum.Enum):
@@ -201,6 +203,42 @@ def convert_sqlalchemy_composite(composite, name,
     return graphene_type
 
 
+def convert_sqlalchemy_model_to_scheme(model, name, classname, baseclass,
+                                       registry=None,
+                                       connection_field_factory=None,
+                                       input_attributes=False):
+    graphene_type = registry.get_type_for_relationship_input(classname)
+    if graphene_type:
+        return graphene_type
+
+    inspected_model = inspect(model)
+    primary_key = next(iter(inspected_model.primary_key), None)
+
+    _fields = {
+        'Meta': {'model': model},
+        primary_key.name: convert_sqlalchemy_type(
+            primary_key.type,
+            primary_key,
+            name,
+            registry,
+            connection_field_factory,
+            input_attributes)
+    }
+    if not input_attributes:
+        exclude = (primary_key.name,)
+        for _name, _field, _type in iter_fields(model, exclude_fields=exclude):
+            _fields[_name] = convert_sqlalchemy_type(
+                _field.type,
+                _field,
+                _name,
+                registry,
+                connection_field_factory,
+                input_attributes)
+    graphene_type = type(classname, (baseclass,), _fields)
+    registry.register_type_for_relationship_input(graphene_type)
+    return graphene_type
+
+
 def convert_sqlalchemy_relationship(t, relationship, name,
                                     registry=None,
                                     connection_field_factory=None,
@@ -223,26 +261,14 @@ def convert_sqlalchemy_relationship(t, relationship, name,
     if not input_attributes:
         return graphene.Dynamic(dynamic_type)
 
-    _classname = f'{model.__name__}RelationshipInput'
-    _baseclass = InputObjectType
-    graphene_type = registry.get_type_for_relationship_input(_classname)
-
-    if not graphene_type:
-        inspected_model = inspect(model)
-        primary_key = next(iter(inspected_model.primary_key), None)
-
-        _fields = {
-            'Meta': {'model': model},
-            primary_key.name: convert_sqlalchemy_type(
-                primary_key.type,
-                primary_key,
-                name,
-                registry,
-                connection_field_factory,
-                input_attributes)
-        }
-        graphene_type = type(_classname, (_baseclass,), _fields)
-        registry.register_type_for_relationship_input(graphene_type)
+    graphene_type = convert_sqlalchemy_model_to_scheme(
+        model,
+        name,
+        f'{model.__name__}RelationshipInput',
+        InputObjectType,
+        registry,
+        connection_field_factory,
+        input_attributes)
 
     return graphene.List(
         graphene_type,
@@ -255,7 +281,22 @@ def convert_sqlalchemy_hybrid_method(t, f, name,
                                      connection_field_factory=None,
                                      input_attributes=False):
     property_type = f.info.get('type')
-    if hasattr(property_type, '_to_instance'):
+    if is_mapped_class(property_type):
+        _classname = property_type.__name__
+        _baseclass = graphene.ObjectType
+        if input_attributes:
+            _classname += 'Input'
+            _baseclass = InputObjectType
+        graphene_type = convert_sqlalchemy_model_to_scheme(
+            property_type,
+            name or f.__name__,
+            _classname,
+            _baseclass,
+            registry,
+            connection_field_factory,
+            input_attributes)
+        return graphene.Field(graphene_type)
+    elif hasattr(property_type, '_to_instance'):
         property_type = property_type._to_instance(property_type)
         return convert_sqlalchemy_type(
             property_type, f, name,
