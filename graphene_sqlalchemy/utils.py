@@ -105,7 +105,44 @@ def is_mapped_instance(cls):
     try:
         object_mapper(cls)
     except (ArgumentError, UnmappedInstanceError) as _:
-        print(_)
         return False
     else:
         return True
+
+
+def get_model_primary_key(cls):
+    def _getattr(o, n):
+        try:
+            return getattr(o, n)
+        except Exception as _:
+            return None
+
+    def _from_inspect(m):
+        try:
+            inspected_model = inspect(m)
+            return next(iter(inspected_model.primary_key), None)
+        except Exception as _:
+            return None
+
+    def _from_mapper(m):
+        try:
+            return next(iter(m.__mapper__.primary_key._list), None)
+        except Exception as _:
+            return None
+
+    def _from_traverse(m):
+        for n in dir(m):
+            if '__' in n:
+                continue
+            _f = _getattr(cls, n)
+            if not (hasattr(_f, 'primary_key') and _f.primary_key):
+                continue
+            return _f
+
+    f = _from_inspect(cls)
+    if f is None:
+        f = _from_mapper(cls)
+    if f is None:
+        f = _from_traverse(cls)
+    assert f is not None
+    return f

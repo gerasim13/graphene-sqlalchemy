@@ -15,7 +15,7 @@ from sqlalchemy.sql import type_api
 from .fields import default_connection_field_factory
 from .registry import Registry, get_global_registry
 from .utils import (get_column_doc, is_column_required, is_column_nullable,
-                    is_mapped_class)
+                    is_mapped_class, get_model_primary_key)
 
 
 class FieldType(enum.Enum):
@@ -211,9 +211,7 @@ def convert_sqlalchemy_model_to_scheme(model, name, classname, baseclass,
     if graphene_type:
         return graphene_type
 
-    inspected_model = inspect(model)
-    primary_key = next(iter(inspected_model.primary_key), None)
-
+    primary_key = get_model_primary_key(model)
     _fields = {
         'Meta': {'model': model},
         primary_key.name: convert_sqlalchemy_type(
@@ -281,7 +279,10 @@ def convert_sqlalchemy_hybrid_method(t, f, name,
                                      connection_field_factory=None,
                                      input_attributes=False):
     property_type = f.info.get('type')
-    if is_mapped_class(property_type):
+    is_abstract = False
+    if hasattr(property_type, '__abstract__'):
+        is_abstract = property_type.__abstract__
+    if is_mapped_class(property_type) or is_abstract:
         _classname = property_type.__name__
         _baseclass = graphene.ObjectType
         if input_attributes:
