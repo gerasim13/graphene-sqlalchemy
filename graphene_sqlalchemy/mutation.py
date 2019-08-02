@@ -61,8 +61,14 @@ class Mutation(graphene.Mutation):
         data_for_update = cls._available_fields_for_user(
             user_roles, roles_map, **data)
 
-        model_pk = data.get(inspect(model_cls).primary_key[0].name)
-        model = session.query(model_cls).get(model_pk) if model_pk else None
+        pk_name = inspect(model_cls).primary_key[0].name
+        model_pk = data.get(pk_name)
+
+        if model_pk:
+            model = session.query(model_cls).get(model_pk)
+        else:
+            model = None
+            data_for_update.pop(pk_name)
 
         try:
             if not model:
