@@ -2,8 +2,9 @@ import graphene
 import sys
 from collections import namedtuple
 from graphene.relay.node import InterfaceOptions
-from sqlalchemy import or_, types
+from sqlalchemy import or_, and_, types
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.query import Query
 from sqlalchemy.sql.expression import cast
 
 from .converter import (convert_model_to_attributes, get_attributes_fields,
@@ -147,10 +148,12 @@ class ObjectType(graphene.ObjectType):
             return None
 
     @classmethod
-    def filter_node(cls, info, return_many=False, **kwargs):
+    def filter_node(cls, info, query_filter=None, return_many=False, **kwargs):
         try:
             filter_args = []
             query = cls.get_query(info)
+            if callable(query_filter):
+                query = query.filter(*query_filter(cls._meta.model))
             for field, value in kwargs.items():
                 column = getattr(cls._meta.model, field)
                 if isinstance(column.type, types.ARRAY):
@@ -164,8 +167,8 @@ class ObjectType(graphene.ObjectType):
                         filter_args.append(column == cast(value, column.type))
                 else:
                     filter_args.append(column == cast(value, column.type))
-            filter_query = query.filter(*filter_args)
-            node = filter_query.all() if return_many else filter_query.first()
+            query = query.filter(*filter_args)
+            node = query.all() if return_many else query.first()
             return node
         except NoResultFound:
             return None

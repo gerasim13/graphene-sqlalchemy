@@ -18,6 +18,7 @@ from .fields import default_connection_field_factory
 class InterfaceOptions(BaseOptions):
     fields = None  # type: Dict[str, Field]
     filter_fields = None  # type: Dict[str, Field]
+    query_filter = None
     model = None
 
     def freeze(self):
@@ -34,6 +35,7 @@ class NodeField(Field):
             deprecation_reason=None,
             name=None,
             arguments=None,
+            query=None,
             **kwargs):
         assert issubclass(node, Node), "NodeField can only operate in Nodes"
         self.node_type = node
@@ -90,11 +92,13 @@ class Node(AbstractNode):
             type_cast=None,
             exclude_fields=None,
             filter_fields=None,
+            query_filter=None,
             connection_field_factory=default_connection_field_factory,
             **options):
         assert model, 'Model not provided'
         _meta = InterfaceOptions(cls)
         _meta.model = model
+        _meta.query_filter = query_filter
 
         if filter_fields:
             _meta.filter_fields = {}
@@ -141,10 +145,15 @@ class Node(AbstractNode):
     @classmethod
     def get_node_from_filter(cls, info, **filter_fields):
         _type = cls._meta.model.__name__
+        _query = cls._meta.query_filter
         graphene_type = info.schema.get_type(_type).graphene_type
         filter_node = getattr(graphene_type, "filter_node", None)
         return_many = isinstance(info.return_type,  GraphQLList)
-        return filter_node(info, return_many=return_many, **filter_fields)
+        return filter_node(
+            info,
+            return_many=return_many,
+            query_filter=_query,
+            **filter_fields)
 
     @classmethod
     def get_node_from_global_id(cls, info, global_id, only_type=None):
