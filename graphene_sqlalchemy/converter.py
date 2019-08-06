@@ -222,16 +222,25 @@ def convert_sqlalchemy_model_to_scheme(model, name, classname, baseclass,
             connection_field_factory,
             input_attributes)
     }
+
     if not input_attributes:
         exclude = (primary_key.name,)
         for _name, _field, _type in iter_fields(model, exclude_fields=exclude):
+            if hasattr(_field, 'info') and 'type' in _field.info:
+                field_type = _field.info['type']
+            else:
+                field_type = _field.type
+            assert field_type, \
+                f'Failed to get type for {_name} ' \
+                f'field ({_field})'
             _fields[_name] = convert_sqlalchemy_type(
-                _field.type,
+                field_type,
                 _field,
                 _name,
                 registry,
                 connection_field_factory,
                 input_attributes)
+
     graphene_type = type(classname, (baseclass,), _fields)
     registry.register_type_for_relationship_input(graphene_type)
     return graphene_type
