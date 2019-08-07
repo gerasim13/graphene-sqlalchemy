@@ -93,7 +93,7 @@ class Mutation(graphene.Mutation):
         field_ast = next(iter(info.field_asts), None)
         selection = [f.name.value for f in field_ast.selection_set.selections]
         new_record = cls.upsert(
-            model, model_cls, db_session, **data
+            model, model_cls, db_session, **data_for_update
         ).as_dict(selection)
 
         for k, v in foreign_fields_map.items():
