@@ -375,7 +375,14 @@ def convert_uuid_field(t, f, name,
                        optional_field=False):
     if getattr(f, 'primary_key', None):
         return convert_id_field(
-            t, f, None,
+            t, f, name,
+            registry,
+            connection_field_factory,
+            input_attributes,
+            optional_field)
+    if not f.type.as_uuid:
+        return convert_str_field(
+            t, f, name,
             registry,
             connection_field_factory,
             input_attributes,
